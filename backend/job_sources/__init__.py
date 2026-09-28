@@ -233,6 +233,18 @@ def matches_exclude(text: str, patterns: tuple[re.Pattern, ...]) -> bool:
     return any(p.search(text) for p in patterns)
 
 
+def matches_content_exclusion(job: dict, config: dict) -> bool:
+    """Match explicit phrases anywhere in a posting, including its description.
+
+    Keep this separate from exclude_keywords: those also include generic title
+    terms such as "manager" that would cause false positives in descriptions.
+    """
+    phrases = config.get("search", {}).get("exclude_content_phrases", [])
+    patterns = compile_exclude_patterns(phrases)
+    return any(matches_exclude(job.get(field, ""), patterns)
+               for field in ("title", "company", "description"))
+
+
 def matches_keywords(text: str, keywords: list[str]) -> bool:
     """True if *text* matches any configured search keyword.
 
@@ -405,6 +417,11 @@ def _passes_global_filters(job: dict, config: dict) -> bool:
             matches_exclude(job.get("company", ""), exclude_patterns):
         logger.debug("Global filter: excluded '%s' at '%s' — matched an exclude keyword",
                      job.get("title"), job.get("company"))
+        return False
+
+    if matches_content_exclusion(job, config):
+        logger.debug("Global filter: excluded '%s' — matched a content phrase",
+                     job.get("title"))
         return False
 
     # Keyword gate — the safety net the in-Python per-source filters were the
