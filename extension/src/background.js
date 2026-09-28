@@ -194,7 +194,7 @@ api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // No port pin: the desktop backend binds a random free port when 8888 is
 // already taken (e.g. a Docker Jobsmith is running).
-const LAUNCH_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/assist\/launch\/([A-Za-z0-9_-]+)/;
+const LAUNCH_RE = /^(?:https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?|https:\/\/jobsmith\.d\.salehh\.xyz)\/assist\/launch\/([A-Za-z0-9_-]+)/;
 
 // ---------------------------------------------------------------------------
 // The in-page docked panel — the ONE panel implementation, both browsers.
@@ -354,6 +354,11 @@ async function performAssistHandshake(launchUrl, sessionId, tabId) {
   // icon → Open panel after every Apply Assist. Runs in parallel with the
   // checkin so a slow backend doesn't delay the panel.
   await tryOpenSidePanel(tabId);
+
+  // The remote launch page is authenticated by the dashboard cookie. Its
+  // content script reads the one-time setup token from that page and checks
+  // in; an extension-background fetch has no dashboard cookie on first pair.
+  if (origin === "https://jobsmith.d.salehh.xyz") return;
 
   let setupToken;
   try {

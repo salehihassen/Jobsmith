@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from backend.job_sources import (
     compile_exclude_patterns,
     matches_exclude,
+    matches_content_exclusion,
     matches_keywords,
     parse_posted_date,
     _identity_key,
@@ -141,6 +142,19 @@ _CONFIG = {
 
 
 class TestGlobalFilters:
+
+    def test_content_phrase_excludes_description_across_sources(self):
+        cfg = {"search": {"exclude_content_phrases": ["kinetic strike", "Project Maven"]}}
+        job = _job(description="Build software for a kinetic strike planning workflow")
+        assert matches_content_exclusion(job, cfg)
+        assert not _passes_global_filters(job, cfg)
+
+    def test_content_phrase_uses_boundaries_and_preserves_defensive_roles(self):
+        cfg = {"search": {"exclude_content_phrases": ["strike", "target nomination"]}}
+        assert not matches_content_exclusion(
+            _job(description="Build missile warning systems to protect civilians"), cfg)
+        assert not matches_content_exclusion(
+            _job(description="Improve Strikethrough formatting in documents"), cfg)
 
     def test_normal_job_passes(self):
         assert _passes_global_filters(_job(), _CONFIG)

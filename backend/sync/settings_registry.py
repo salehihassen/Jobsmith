@@ -134,6 +134,8 @@ REGISTRY: tuple[Setting, ...] = (
     Setting("search.keywords", Cls.SYNC, Kind.LIST_STR, "postings", ios="search.keywords"),
     Setting("search.locations", Cls.SYNC, Kind.LIST_STR, "postings", ios="search.locations"),
     Setting("search.exclude_keywords", Cls.SYNC, Kind.LIST_STR, "postings", ios="search.excludeKeywords"),
+    Setting("search.exclude_content_phrases", Cls.LOCAL, Kind.LIST_STR, "_excluded",
+            note="Desktop-only description filter; iOS has no matching ingest rule."),
     Setting("search.min_salary", Cls.SYNC, Kind.INT_NULLABLE, "postings", ios="search.minSalary"),
     Setting("search.max_age_days", Cls.SYNC, Kind.INT_NULLABLE, "postings", ios="search.maxAgeDays",
             note="iOS distinguishes explicit null ('no limit') from absent (AppConfig.swift:98)."),

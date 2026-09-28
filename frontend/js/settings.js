@@ -42,6 +42,7 @@ async function loadSettings() {
         document.getElementById('cfg-keywords').value = (cfg.search?.keywords || []).join(', ');
         document.getElementById('cfg-locations').value = (cfg.search?.locations || []).join('\n');
         document.getElementById('cfg-exclude').value = (cfg.search?.exclude_keywords || []).join(', ');
+        document.getElementById('cfg-exclude-content').value = (cfg.search?.exclude_content_phrases || []).join('\n');
         document.getElementById('cfg-salary').value = cfg.search?.min_salary || 0;
         // greenhouse_boards is the canonical key the fetcher prefers;
         // greenhouse_companies is the legacy alias.
@@ -765,6 +766,7 @@ async function saveSettings() {
             keywords: splitTrim(document.getElementById('cfg-keywords').value),
             locations: document.getElementById('cfg-locations').value.split('\n').map(s => s.trim()).filter(Boolean),
             exclude_keywords: splitTrim(document.getElementById('cfg-exclude').value),
+            exclude_content_phrases: document.getElementById('cfg-exclude-content').value.split('\n').map(s => s.trim()).filter(Boolean),
             min_salary: parseInt(document.getElementById('cfg-salary').value) || 0,
             // Write both greenhouse keys: canonical (fetcher prefers it) and
             // legacy (so a stale legacy list can't shadow a cleared field).

@@ -248,6 +248,63 @@ class TestAssistSetupTokenIsEphemeral:
         assert resp.json()["token"] != "ephemeral-xyz"
 
 
+class TestRemoteAssistLaunch:
+    def test_remote_launch_returns_browser_url_without_opening_server_browser(
+        self, monkeypatch, client, token
+    ):
+        from backend import applicant_assist
+        from backend.routers import assist
+
+        async def job_for_test(job_id):
+            return {
+                "id": job_id, "url": "https://jobs.example/apply",
+                "application": {"resume_content": "Sample resume"},
+            }
+
+        monkeypatch.setenv("JOBSMITH_EXTERNAL_URL", "https://testserver")
+        monkeypatch.setattr(assist.state, "load_config", lambda: {})
+        monkeypatch.setattr(assist.db, "get_job", job_for_test)
+        monkeypatch.setattr(applicant_assist, "register_active_session", lambda **kw: None)
+        monkeypatch.setattr(
+            applicant_assist, "create_handoff_session",
+            lambda job, setup_token: {"id": "session-1"},
+        )
+
+        response = client.post(
+            "/api/assist/launch", json={"job_id": "job-1"},
+            headers={"X-Jobsmith-Token": token},
+        )
+        assert response.status_code == 200
+        assert response.json()["launch_url"] == "https://testserver/assist/launch/session-1"
+        assert response.json()["opened"] is False
+
+    def test_remote_launch_needs_dashboard_auth_and_configured_host(
+        self, monkeypatch, client, token
+    ):
+        from backend import applicant_assist
+        from backend.routers import assist
+
+        monkeypatch.setenv("JOBSMITH_EXTERNAL_URL", "https://testserver")
+        monkeypatch.setattr(assist.state, "load_config", lambda: {})
+        monkeypatch.setattr(applicant_assist, "get_handoff_session", lambda sid: {
+            "id": sid, "setup_token": "one-time-token",
+            "apply_url": "https://jobs.example/apply", "job_title": "Engineer",
+            "job_company": "Example",
+        })
+
+        assert client.get("/assist/launch/session-1").status_code == 401
+        response = client.get(
+            "/assist/launch/session-1", headers={"X-Jobsmith-Token": token}
+        )
+        assert response.status_code == 200
+        assert "one-time-token" in response.text
+
+        monkeypatch.setenv("JOBSMITH_EXTERNAL_URL", "https://different.example")
+        assert client.get(
+            "/assist/launch/session-1", headers={"X-Jobsmith-Token": token}
+        ).status_code == 403
+
+
 class TestAssistLaunchPageEscaping:
     """A scraped apply URL must not be able to run script on our origin."""
 

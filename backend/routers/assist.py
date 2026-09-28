@@ -10,6 +10,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -22,6 +23,23 @@ from .. import database as db
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _external_base_url() -> str:
+    """Return the explicitly configured HTTPS origin for a remote dashboard."""
+    value = os.environ.get("JOBSMITH_EXTERNAL_URL", "").strip().rstrip("/")
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username
+            or parsed.password or parsed.path or parsed.query or parsed.fragment):
+        raise ValueError("JOBSMITH_EXTERNAL_URL must be an HTTPS origin without a path")
+    return value
+
+
+def _is_external_request(request: Request) -> bool:
+    base = _external_base_url()
+    return bool(base and request.headers.get("host", "") == urlsplit(base).netloc)
 
 
 def _resume_dir_path(job_id: str, name: str) -> Path:
@@ -496,14 +514,16 @@ async def assist_launch(req: AssistLaunchRequest):
     # preferred port, so the env var must win or the launch URL points at the
     # wrong (or no) server.
     port = int(os.environ.get("JOBSMITH_PORT") or cfg.get("server", {}).get("port", 8888))
-    launch_url = f"http://127.0.0.1:{port}/assist/launch/{record['id']}"
+    external_base = _external_base_url()
+    launch_url = f"{external_base or f'http://127.0.0.1:{port}'}/assist/launch/{record['id']}"
 
     opened = False
-    try:
-        import webbrowser
-        opened = webbrowser.open(launch_url, new=2)
-    except Exception as exc:
-        logger.warning("assist_launch: webbrowser.open failed: %s", exc)
+    if not external_base:
+        try:
+            import webbrowser
+            opened = webbrowser.open(launch_url, new=2)
+        except Exception as exc:
+            logger.warning("assist_launch: webbrowser.open failed: %s", exc)
 
     return {
         "mode": "handoff",
@@ -531,8 +551,8 @@ async def assist_launch_page(session_id: str, request: Request):
     polls /api/assist/session/{id}/state and redirects to the job apply URL
     once the extension checks in.
     """
-    if not _is_loopback_request(request):
-        raise HTTPException(403, "This page is only available on localhost")
+    if not (_is_loopback_request(request) or _is_external_request(request)):
+        raise HTTPException(403, "This page is only available on the configured Jobsmith host")
     rec = applicant_assist.get_handoff_session(session_id)
     if not rec:
         raise HTTPException(404, "Assist session expired or not found")
@@ -654,15 +674,14 @@ async def assist_launch_page(session_id: str, request: Request):
     const isChromiumFamily = /Chrome|Chromium|Edg|Brave/i.test(ua) && !isFirefox;
     let html = '';
     if (isFirefox) {{
-      html += '<p>Install the Jobsmith extension in Firefox (permanent, Mozilla-signed):</p><ol>';
-      html += '<li><a href="/api/extension/firefox-xpi">Download &amp; install the signed add-on</a> — Firefox will prompt you to add it.</li>';
-      html += '<li>If no prompt appears, open <code>about:addons</code> → the gear icon ⚙️ → <em>Install Add-on From File…</em> → pick the downloaded <code>.xpi</code>.</li>';
-      if (Jobsmith.amo_url) html += '<li>Or <a href="' + Jobsmith.amo_url + '" target="_blank">install from Mozilla Add-ons</a>.</li>';
+      html += '<p>Install the patched Jobsmith extension in Firefox:</p><ol>';
+      html += '<li><a href="/api/extension/download/firefox">Download the Firefox extension</a> and unzip it.</li>';
+      html += '<li>Open <code>about:debugging#/runtime/this-firefox</code> → <em>Load Temporary Add-on</em> → choose the extracted <code>manifest.json</code>. Firefox removes temporary add-ons when it restarts.</li>';
       html += '</ol>';
     }} else if (isChromiumFamily) {{
       html += '<p>Install the Jobsmith extension in this browser:</p><ol>';
       if (Jobsmith.web_store_url) html += '<li><a href="' + Jobsmith.web_store_url + '" target="_blank">Install from the Chrome Web Store</a>, or</li>';
-      html += '<li>Open <code>chrome://extensions</code> → enable <em>Developer mode</em> → <em>Load unpacked</em> → choose <code>extension/src/</code> in the Jobsmith repo.</li>';
+      html += '<li><a href="/api/extension/download/chrome">Download the Chrome extension</a>, unzip it, then open <code>chrome://extensions</code> → enable <em>Developer mode</em> → <em>Load unpacked</em> → choose the extracted folder.</li>';
       html += '</ol>';
     }} else {{
       html += '<p>Your browser doesn\\'t have a Jobsmith extension build. Use the <em>isolated mode</em> fallback below, or open this page in Firefox/Chrome/Edge.</p>';
@@ -733,7 +752,8 @@ async def assist_launch_page(session_id: str, request: Request):
     // The persistent token is deliberately NOT baked into this page's HTML —
     // the setup token in the DOM is ephemeral. Fetch the real one on demand,
     // only when the user explicitly asks to configure the extension by hand.
-    // /api/extension/token is loopback-only, and this page is loopback-served.
+    // /api/extension/token is loopback-only. Remote installs pair through the
+    // launch-page content script instead of revealing the persistent token.
     const out = $('persistent-token');
     if (out.dataset.loaded) return;
     try {{

@@ -7,6 +7,7 @@ backend/extension_api.py; this module is the dashboard-facing surface.
 """
 
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
@@ -107,6 +108,13 @@ async def download_firefox_xpi():
     in Firefox triggers the native install prompt directly. Produced by
     `cd extension/dist/firefox && web-ext sign --channel=unlisted ...`.
     """
+    if os.environ.get("JOBSMITH_EXTERNAL_URL", "").strip():
+        raise HTTPException(
+            409,
+            "The bundled signed Firefox add-on has no permission for this remote "
+            "Jobsmith host. Download the patched Firefox zip and load its "
+            "manifest.json as a temporary add-on, or sign a new XPI.",
+        )
     path = _latest_signed_xpi()
     if not path:
         raise HTTPException(

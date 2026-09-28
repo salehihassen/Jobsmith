@@ -23,7 +23,7 @@ function report(checks) {
   return fail;
 }
 
-// The 63 config inputs saveSettings() reads. Adding a setting? Add it here too.
+// The 64 config inputs saveSettings() reads. Adding a setting? Add it here too.
 const CFG_IDS = [
   "cfg-adzuna-app-id", "cfg-adzuna-app-key", "cfg-ai-api-key", "cfg-ai-model-fast",
   "cfg-ai-model-strong", "cfg-ai-model-utility",
@@ -31,7 +31,7 @@ const CFG_IDS = [
   "cfg-ai-url", "cfg-ashby",
   "cfg-ats-login-password", "cfg-available-start", "cfg-bls-api-key",
   "cfg-certifications", "cfg-city", "cfg-context-window", "cfg-country",
-  "cfg-desired-salary", "cfg-disability", "cfg-email", "cfg-exclude",
+  "cfg-desired-salary", "cfg-disability", "cfg-email", "cfg-exclude", "cfg-exclude-content",
   "cfg-flaresolverr-url", "cfg-gender", "cfg-github", "cfg-greenhouse",
   "cfg-keywords", "cfg-lever", "cfg-linkedin", "cfg-live-refresh", "cfg-locations",
   "cfg-location", "cfg-middle-name", "cfg-name", "cfg-notice-period",

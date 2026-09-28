@@ -287,6 +287,7 @@ class IngestUrlRequest(BaseModel):
 async def ingest_url(body: IngestUrlRequest):
     """Ingest a single job from a user-supplied URL into the jobs table."""
     from ..job_sources import manual as _manual
+    from ..job_sources import matches_content_exclusion
 
     try:
         job = await _manual.fetch_job_from_url(body.url)
@@ -295,6 +296,9 @@ async def ingest_url(body: IngestUrlRequest):
     except Exception as e:
         logger.exception("ingest-url failed for %s", body.url)
         raise HTTPException(502, f"Failed to fetch URL: {e}")
+
+    if matches_content_exclusion(job, state.load_config()):
+        raise HTTPException(422, "Posting matches an excluded content phrase")
 
     existing = await db.get_job_by_source_external(job["source"], job["external_id"])
     if existing and not (existing.get("title") or "").strip():
@@ -689,7 +693,10 @@ async def resolve_linkedin_locations(body: dict):
 
 @router.patch("/api/jobs/{job_id}/status")
 async def update_job_status(job_id: str, body: StatusUpdate):
-    updated = await db.update_job_status(job_id, body.status)
+    if body.status in ("applied", "manual"):
+        updated = await db.mark_job_applied(job_id, body.status)
+    else:
+        updated = await db.update_job_status(job_id, body.status)
     if not updated:
         raise HTTPException(404, "Job not found")
     if body.status in ("applied", "manual"):
