@@ -225,14 +225,15 @@ function handleHash() {
 // is captured and restored around the reload so the view doesn't jump.
 let liveRefreshInterval = null;
 const LIVE_REFRESH_MS = 8000;
+let _liveRefreshActive = false;
 
 function isLiveRefreshEnabled() {
     return localStorage.getItem('jobsmith_live_refresh') !== 'off';
 }
 
 async function refreshActiveView() {
-    if (document.hidden) return;                                  // window not visible
-    if (document.querySelector('.app-dialog-overlay')) return;    // mid confirm/prompt
+    if (_liveRefreshActive || document.hidden) return;            // hidden or already loading
+    if (document.querySelector('.app-dialog-overlay, .job-modal-overlay, .job-edit-overlay')) return;    // mid confirm/prompt
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;  // don't yank while typing
 
@@ -245,6 +246,7 @@ async function refreshActiveView() {
     const jobsList = document.getElementById('jobs-list');
     const jobsY = jobsList ? jobsList.scrollTop : 0;
 
+    _liveRefreshActive = true;
     try {
         switch (hash) {
             case 'dashboard': await loadDashboard(); break;
@@ -268,6 +270,7 @@ async function refreshActiveView() {
     } catch (e) {
         // A failed refresh is silent; the next tick tries again.
     } finally {
+        _liveRefreshActive = false;
         if (winScroller && winY) winScroller.scrollTop = winY;
         if (jobsList && jobsY) jobsList.scrollTop = jobsY;
     }

@@ -107,7 +107,7 @@ function renderFunnel() {
         ? focused.getAttribute('data-stage') : null;
     // In board view the segments are filter toggles, not tabs.
     el.setAttribute('role', board ? 'group' : 'tablist');
-    el.innerHTML = funnelStages().map(seg => {
+    const html = funnelStages().map(seg => {
         const n = pipelineCount(seg.key);
         const active = seg.key === activeKey;
         const state = board ? `aria-pressed="${active}"` : `role="tab" aria-selected="${active}"`;
@@ -120,6 +120,9 @@ function renderFunnel() {
             title="${escapeHtml(hint)}"
             aria-label="${escapeHtml(seg.label)}: ${n}"><b class="num">${n}</b><span>${escapeHtml(seg.label)}</span></button>`;
     }).join('');
+    if (el._funnelHtml === html) return;
+    el.innerHTML = html;
+    el._funnelHtml = html;
     if (keepKey) {
         const again = el.querySelector(`.fseg[data-stage="${keepKey}"]`);
         if (again) again.focus();
@@ -191,12 +194,27 @@ async function refreshFunnelCounts() {
 // Pipeline → Shortlisted stage: jobs the user kept while scouting the Inbox
 // (job.status === 'shortlisted'), before an application exists. Reuses the
 // job list endpoint; no application row yet, so these render as job cards.
+function renderPipelineData(containerId, data, render) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const snapshot = JSON.stringify(data);
+    if (container._pipelineSnapshot === snapshot) return;
+    render(data);
+    container._pipelineSnapshot = snapshot;
+}
+
+function pipelineLoadError(containerId, message, retry) {
+    const container = document.getElementById(containerId);
+    if (container && container._pipelineSnapshot !== undefined) return;
+    renderError(containerId, message, retry);
+}
+
 async function loadShortlisted() {
     try {
         const data = await api('/api/jobs?status=shortlisted&limit=50&sort_by=fit_score&sort_dir=desc');
-        renderShortlisted(data);
+        renderPipelineData('shortlisted-list', data, renderShortlisted);
     } catch (e) {
-        renderError('shortlisted-list', 'Failed to load shortlisted jobs.', loadShortlisted);
+        pipelineLoadError('shortlisted-list', 'Failed to load shortlisted jobs.', loadShortlisted);
     }
 }
 
@@ -249,9 +267,9 @@ async function loadReviewQueue() {
     try {
         const apps = await api('/api/applications/pending?limit=50');
         setPipelineCount('pending', (apps || []).length);
-        renderReviewQueue(apps);
+        renderPipelineData('review-list', apps, renderReviewQueue);
     } catch (e) {
-        renderError('review-list', 'Failed to load the review queue.', loadReviewQueue);
+        pipelineLoadError('review-list', 'Failed to load the review queue.', loadReviewQueue);
     }
 }
 
@@ -259,9 +277,9 @@ async function loadSubmittedApplications() {
     try {
         const apps = await api('/api/applications/submitted?limit=50');
         setPipelineCount('applied', (apps || []).length);
-        renderSubmittedApplications(apps);
+        renderPipelineData('submitted-list', apps, renderSubmittedApplications);
     } catch (e) {
-        renderError('submitted-list', 'Failed to load submitted applications.', loadSubmittedApplications);
+        pipelineLoadError('submitted-list', 'Failed to load submitted applications.', loadSubmittedApplications);
     }
 }
 
@@ -269,18 +287,18 @@ async function loadFailedApplications() {
     try {
         const apps = await api('/api/applications/failed?limit=50');
         setPipelineCount('failed', (apps || []).length);
-        renderFailedApplications(apps);
+        renderPipelineData('failed-list', apps, renderFailedApplications);
     } catch (e) {
-        renderError('failed-list', 'Failed to load failed applications.', loadFailedApplications);
+        pipelineLoadError('failed-list', 'Failed to load failed applications.', loadFailedApplications);
     }
 }
 
 async function loadInProgress() {
     try {
         const data = await api('/api/applications/in-progress');
-        renderInProgress(data);
+        renderPipelineData('in-progress-list', data, renderInProgress);
     } catch (e) {
-        renderError('in-progress-list', 'Failed to load in-progress applications.', loadInProgress);
+        pipelineLoadError('in-progress-list', 'Failed to load in-progress applications.', loadInProgress);
     }
 }
 
