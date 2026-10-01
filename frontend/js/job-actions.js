@@ -53,6 +53,12 @@ function jobHasUrl(job) {
 // action differently: "Erase" in a cramped row, "Erase Permanently" in the
 // detail pane) — the action, and whether it shows at all, is identical.
 const JOB_ACTIONS = {
+    'edit-job': {
+        kind: 'secondary',
+        label: 'Edit job',
+        handler: (id) => `editJobDetails('${id}')`,
+        visible: (job) => !jobIsDeleted(job),
+    },
     'score': {
         kind: 'secondary',
         label: (job) => (job.fit_score ? 'Rescore' : 'Score'),
@@ -142,7 +148,7 @@ const JOB_ACTION_ORDER = {
         deleted: ['restore', 'erase'],
     },
     'detail': {
-        live: ['score', 'tailor', 'assist', 'view-application', 'open-url',
+        live: ['edit-job', 'score', 'tailor', 'assist', 'view-application', 'open-url',
                'mark-applied', 'embellishments', 'delete'],
         deleted: ['restore', 'open-url', 'erase'],
     },
@@ -153,17 +159,17 @@ const JOB_ACTION_ORDER = {
     'peek': 'detail',
     'kanban-menu': {
         // Column-to-column moves are driven by the board's transition map, not
-        // by the job, so they stay in deck.js. Delete is the only job-level
-        // entry; the ✕ hover-delete on the card is not a menu action.
-        live: ['delete'],
+        // by the job, so they stay in deck.js. Posting edits and deletion
+        // come from this shared registry.
+        live: ['edit-job', 'delete'],
         deleted: [],
     },
     'review-row': {
-        live: ['tailor', 'score', 'pass'],
+        live: ['edit-job', 'tailor', 'score', 'pass'],
         deleted: [],
     },
     'review-detail': {
-        live: ['assist'],
+        live: ['edit-job', 'assist'],
         deleted: [],
     },
 };
