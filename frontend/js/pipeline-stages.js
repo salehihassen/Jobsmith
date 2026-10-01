@@ -7,8 +7,8 @@
 //
 // Loaded before review.js and deck.js (classic script, shared global scope).
 // The list is ordered by how work actually flows:
-//   Shortlisted → Tailoring → Ready to Review → Applied, with Failed /
-//   In Progress / Needs Attention hanging off the end for auditing.
+//   Applied → Interviewing → Offer. Preparation, submission issues and
+//   closed history stay available in separate expandable sections.
 //
 // Each stage carries:
 //   key    canonical id, also the key in the shared count store
@@ -22,46 +22,68 @@
 //   dot    column dot colour   seg  funnel segment colour class
 const PIPELINE_STAGES = [
     {
-        key: 'shortlisted', label: 'Shortlisted',
-        desc: 'Jobs you kept while scouting the Inbox — no application exists yet.',
-        funnel: true, board: true, col: 'shortlisted', tab: 'shortlisted',
+        key: 'applied', label: 'Applied',
+        desc: 'Submitted applications waiting for an employer response.',
+        outcomes: ['awaiting', 'no_response'], group: 'primary',
+        funnel: true, board: true, col: 'applied', tab: 'submitted',
         dot: 'var(--steel)', seg: 'fseg-steel',
     },
     {
-        key: 'tailoring', label: 'Tailoring',
+        key: 'interviewing', label: 'Interviewing',
+        desc: 'Applications in screening or interviews with the employer.',
+        outcomes: ['screening', 'interview'], group: 'primary',
+        funnel: true, board: true, col: 'interviewing', tab: 'interviewing',
+        dot: 'var(--accent-yellow)', seg: 'fseg-amber',
+    },
+    {
+        key: 'offer', label: 'Offer',
+        desc: 'Applications for which the employer has made an offer.',
+        outcomes: ['offer'], group: 'primary',
+        funnel: true, board: true, col: 'offer', tab: 'offer',
+        dot: 'var(--accent-green)', seg: 'fseg-green',
+    },
+    {
+        key: 'shortlisted', label: 'Shortlisted', group: 'preparation',
+        desc: 'Jobs you kept while scouting the Inbox — no application exists yet.',
+        funnel: false, board: true, col: 'shortlisted', tab: 'shortlisted',
+        dot: 'var(--steel)', seg: 'fseg-steel',
+    },
+    {
+        key: 'tailoring', label: 'Tailoring', group: 'preparation',
         desc: 'The AI is writing the résumé and cover letter for these.',
         funnel: false, board: true, col: 'tailoring', tab: null,
         dot: 'var(--accent-yellow)', seg: 'fseg-amber',
     },
     {
-        key: 'pending', label: 'Ready to Review',
+        key: 'pending', label: 'Ready to Review', group: 'preparation',
         desc: 'Tailored applications waiting for your approval before they go out.',
-        funnel: true, board: true, col: 'pending', tab: 'pending',
+        funnel: false, board: true, col: 'pending', tab: 'pending',
         dot: 'var(--accent-ember)', seg: 'fseg-ember',
     },
     {
-        key: 'applied', label: 'Applied',
-        desc: 'Applications that have been submitted.',
-        funnel: true, board: true, col: 'applied', tab: 'submitted',
-        dot: 'var(--accent-green)', seg: 'fseg-green',
-    },
-    {
-        key: 'failed', label: 'Failed',
+        key: 'failed', label: 'Failed', group: 'issues',
         desc: 'Submissions that errored out — retry them or apply manually.',
-        funnel: true, board: false, col: 'needs-attention', tab: 'failed',
+        funnel: false, board: false, col: 'needs-attention', tab: 'failed',
         dot: 'var(--accent-red)', seg: 'fseg-red',
     },
     {
-        key: 'in-progress', label: 'In Progress',
+        key: 'in-progress', label: 'In Progress', group: 'issues',
         desc: 'Submissions still mid-flight, plus anything that stopped and needs you.',
-        funnel: true, board: false, col: 'needs-attention', tab: 'in-progress',
+        funnel: false, board: false, col: 'needs-attention', tab: 'in-progress',
         dot: 'var(--accent-yellow)', seg: 'fseg-amber',
     },
     {
-        key: 'needs-attention', label: 'Needs Attention',
+        key: 'needs-attention', label: 'Submission Issues', group: 'issues',
         desc: 'Failed or stalled submissions that need a decision from you.',
         funnel: false, board: true, col: 'needs-attention', tab: null,
         dot: 'var(--accent-red)', seg: 'fseg-red',
+    },
+    {
+        key: 'closed', label: 'Closed applications', group: 'history',
+        desc: 'Rejected and withdrawn applications kept for reference.',
+        outcomes: ['rejected', 'withdrawn'],
+        funnel: false, board: true, col: 'closed', tab: 'closed',
+        dot: 'var(--text-muted)', seg: 'fseg-steel',
     },
 ];
 
@@ -86,4 +108,9 @@ function stageLabel(key) {
 function stageKeyForTab(tab) {
     const s = stageByTab(tab);
     return s ? s.key : tab;
+}
+
+// Existing backend outcomes and event history are the source of hiring progress.
+function pipelineStageForOutcome(outcome) {
+    return PIPELINE_STAGES.find(stage => stage.outcomes && stage.outcomes.includes(outcome || 'awaiting')) || stageByKey('applied');
 }

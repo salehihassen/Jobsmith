@@ -4164,3 +4164,13 @@ body[data-theme="light"] .cmdk-overlay { background: rgba(30,20,12,.28); }
 #ob-model-list { width: 100%; margin-top: 6px; }
 .ob-dl-chip { cursor: default; }
 @media (max-width: 640px) { .ob-mode-cards { grid-template-columns: 1fr; } }
+
+/* Hiring progress is the primary Pipeline; preparation and issues are separate. */
+.pipeline-columns { display: flex; flex-wrap: wrap; gap: 12px; width: 100%; }
+.pipeline-primary > .kcol { min-height: 220px; }
+.pipeline-aux { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.pipeline-aux > summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.pipeline-aux > summary .num { margin-left: 8px; color: var(--text-muted); }
+.pipeline-aux[open] > .pipeline-columns { margin-top: 12px; }
+.pipeline-aux > .btn { margin-top: 12px; }
+@media (max-width: 600px) { .pipeline-primary > .kcol { flex-basis: 100%; min-height: 150px; } }

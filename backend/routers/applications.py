@@ -5,7 +5,7 @@ apply control (pause/resume/force-stop), and content editing/revision.
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -69,8 +69,11 @@ async def pending_reviews(limit: int = Query(20, ge=1, le=100)):
 
 
 @router.get("/api/applications/submitted")
-async def submitted_applications(limit: int = Query(50, ge=1, le=200)):
-    return await db.get_submitted_applications(limit=limit)
+async def submitted_applications(
+    limit: int = Query(50, ge=1, le=200),
+    stage: Optional[Literal["applied", "interviewing", "offer", "closed"]] = None,
+):
+    return await db.get_submitted_applications(limit=limit, stage=stage)
 
 
 @router.get("/api/applications/failed")

@@ -1,5 +1,5 @@
 // Phase 3 "Command Deck" regression test: the ⌘K palette registry filters and
-// escapes hostile input, the kanban drag map exposes EXACTLY the five allowed
+// escapes hostile input, the kanban drag map exposes the allowed
 // transitions (each hitting the right endpoint + payload), the stage keyboard
 // verdicts PATCH the right status, and the two per-view toggles (Inbox
 // cards⇄list, Pipeline board⇄table) each set a state class on their own
@@ -114,7 +114,7 @@ checks.push(["paletteHighlight preserves the literal text", probe2.textContent =
 // ===================================================================
 // 2. Allowed-transition map — exactly 5, each → the right endpoint/payload
 // ===================================================================
-checks.push(["there are exactly 5 allowed transitions", window.allDeckTransitions().length === 5]);
+checks.push(["there are exactly 12 allowed transitions", window.allDeckTransitions().length === 12]);
 
 async function assertDrop(from, to, id, verify) {
   calls.length = 0; confirmCount = 0;
@@ -409,10 +409,10 @@ async function assertDrop(from, to, id, verify) {
   const stageLabels = window.pipelineStages().map((s) => s.label);
   checks.push(["board columns are the board stages, in order",
     JSON.stringify(window.boardStages().map((s) => s.key))
-      === JSON.stringify(["shortlisted", "tailoring", "pending", "applied", "needs-attention"])]);
-  checks.push(["funnel stages are the five funnel segments, in order",
+      === JSON.stringify(["applied", "interviewing", "offer", "shortlisted", "tailoring", "pending", "needs-attention", "closed"])]);
+  checks.push(["funnel stages are the three hiring stages, in order",
     JSON.stringify(window.funnelStages().map((s) => s.key))
-      === JSON.stringify(["shortlisted", "pending", "applied", "failed", "in-progress"])]);
+      === JSON.stringify(["applied", "interviewing", "offer"])]);
   checks.push(["stageLabel resolves a column key", window.stageLabel("pending") === "Ready to Review"]);
   checks.push(["stageLabel keeps a word for the Pass verdict", window.stageLabel("pass") === "Pass"]);
   checks.push(["classic tab name maps back to a stage key", window.stageKeyForTab("submitted") === "applied"]);
@@ -429,7 +429,7 @@ async function assertDrop(from, to, id, verify) {
   checks.push(["funnel segments carry a stage tooltip",
     window.funnelStages().every((s) => funnelHtml.includes(s.desc.slice(0, 24)))]);
   checks.push(["funnel segments are focusable buttons",
-    doc.querySelectorAll("#pipeline-funnel button.fseg").length === 5]);
+    doc.querySelectorAll("#pipeline-funnel button.fseg").length === 3]);
   window.renderReviewTabs();
   const tabHtml = doc.getElementById("review-tab-bar").innerHTML;
   checks.push(["stage tabs render the constant's labels",
