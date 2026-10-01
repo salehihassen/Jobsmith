@@ -400,6 +400,7 @@ function renderInProgress(data) {
                 </div>
                 ${skippedHtml ? `<div>${skippedHtml}</div>` : ''}
                 <div class="review-card-actions">
+                    ${app.job_id ? `<button class="btn btn-secondary btn-sm" onclick="editJobDetails('${safeId(app.job_id)}')">Edit job</button>` : ''}
                     <button class="btn btn-secondary btn-sm" onclick="openJobUrl('${escapeHtml(app.job_id)}')">Open Job URL</button>
                     ${screenshotHtml}
                     <a class="btn btn-secondary btn-sm" href="/api/resumes/${escapeHtml(app.job_id)}/resume" download>Download Resume</a>
@@ -574,6 +575,7 @@ function renderFailedApplications(apps) {
                 </div>
                 ${displayMessage ? `<div class="failed-reason ${isReset ? 'failed-reason-reset' : ''}">${escapeHtml(displayMessage)}</div>` : ''}
                 <div class="review-card-actions">
+                    ${app.job_id ? `<button class="btn btn-secondary btn-sm" onclick="editJobDetails('${safeId(app.job_id)}')">Edit job</button>` : ''}
                     <a class="btn btn-secondary btn-sm" href="${escapeHtml(safeHref(app.url))}" target="_blank" rel="noopener" data-jobsmith-open-url data-jobsmith-job-id="${escapeHtml(app.job_id)}">Open Job URL</a>
                     ${app.resume_content ? `<a class="btn btn-secondary btn-sm" href="/api/resumes/${escapeHtml(app.job_id)}/resume" download>Download Resume</a>` : ''}
                     ${app.cover_letter_content ? `<a class="btn btn-secondary btn-sm" href="/api/resumes/${escapeHtml(app.job_id)}/cover-letter" download>Download Cover Letter</a>` : ''}
@@ -674,6 +676,7 @@ function renderSubmittedApplications(apps) {
                 </div>
                 <div class="review-content" id="submitted-content-${escapeHtml(app.id)}">${escapeHtml(app.resume_content || 'No resume generated')}</div>
                 <div class="review-card-actions">
+                    ${app.job_id ? `<button class="btn btn-secondary btn-sm" onclick="editJobDetails('${safeId(app.job_id)}')">Edit job</button>` : ''}
                     ${isApplying ? `<button class="btn btn-danger btn-sm" onclick="forceStopApply()" title="Stop automation and close browser">Force Stop</button><button class="btn btn-warning btn-sm" onclick="pauseApply()" title="Freeze automation — browser stays open for manual interaction">Pause</button>` : ''}
                     <a class="btn btn-secondary btn-sm" href="${escapeHtml(safeHref(app.url))}" target="_blank" rel="noopener" data-jobsmith-open-url data-jobsmith-job-id="${escapeHtml(app.job_id)}">Open Job URL</a>
                     <a class="btn btn-secondary btn-sm" href="/api/resumes/${escapeHtml(app.job_id)}/resume" download>Download Resume</a>
@@ -809,6 +812,7 @@ function renderReviewQueue(apps) {
                 <div class="review-content" id="content-${escapeHtml(app.id)}">${escapeHtml(app.resume_content || 'No resume generated')}</div>
                 ${isPaused ? `<div style="margin:8px 0 4px 0;padding:8px 10px;border-radius:6px;background:var(--bg-card);border:1px solid var(--accent-orange);font-size:12px;color:var(--accent-orange)">&#9889; Automation is paused — the browser window is still open for manual interaction. Click <strong>Resume</strong> to continue automation.</div>` : ''}
                 <div class="review-card-actions">
+                    ${app.job_id ? `<button class="btn btn-secondary btn-sm" onclick="editJobDetails('${safeId(app.job_id)}')">Edit job</button>` : ''}
                     ${isPaused ? `
                         <button class="btn btn-primary btn-sm" onclick="resumeApply('${escapeHtml(app.id)}')">Resume</button>
                         <button class="btn btn-danger btn-sm" onclick="forceStopApply()">Force Stop</button>

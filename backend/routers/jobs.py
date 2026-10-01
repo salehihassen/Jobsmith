@@ -6,11 +6,13 @@ manual URL ingest, screenshots, and per-job logs.
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from datetime import date
+from typing import Literal, Optional
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .. import app_state as state
 from .. import background_tasks as bg
@@ -24,6 +26,58 @@ router = APIRouter()
 
 class StatusUpdate(BaseModel):
     status: str
+
+
+class JobDetailsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    company: Optional[str] = Field(default=None, max_length=500)
+    location: Optional[str] = Field(default=None, max_length=500)
+    url: Optional[str] = Field(default=None, max_length=8000)
+    description: Optional[str] = Field(default=None, max_length=100000)
+    salary_min: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    salary_max: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    salary_period: Optional[Literal["hourly", "annual", "unknown"]] = None
+    tags: Optional[list[str]] = Field(default=None, max_length=100)
+    date_posted: Optional[date] = None
+    is_remote: Optional[bool] = None
+    is_easy_apply: Optional[bool] = None
+    apply_type: Optional[Literal["easy_apply", "quick_apply", "external", "unknown"]] = None
+
+    @field_validator("title", "salary_period", "tags", "is_remote", "is_easy_apply", "apply_type")
+    @classmethod
+    def non_nullable_fields(cls, value):
+        if value is None:
+            raise ValueError("This field cannot be null")
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def valid_job_url(cls, value):
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        _ = parsed.port  # Reject malformed ports as well as malformed hosts.
+        if any(char.isspace() for char in value):
+            raise ValueError("Job link must not contain whitespace")
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Job link must be an HTTP or HTTPS URL without credentials")
+        return value
+
+
+@router.patch("/api/jobs/{job_id}")
+async def update_job_details(job_id: str, body: JobDetailsUpdate):
+    changes = body.model_dump(exclude_unset=True, mode="json")
+    if not changes:
+        raise HTTPException(422, "Provide at least one job detail to update")
+    try:
+        updated = await db.update_job_details(job_id, changes)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if not updated:
+        raise HTTPException(404, "Job not found")
+    return await db.get_job(job_id)
 
 
 @router.get("/api/jobs")

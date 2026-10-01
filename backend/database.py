@@ -959,6 +959,41 @@ async def refill_manual_job(job_id: str, job: dict) -> None:
         await db.close()
 
 
+async def update_job_details(job_id: str, changes: dict) -> bool:
+    """Edit posting fields without changing its identity, stage or application.
+
+    Validate the merged pay range in the same transaction as the update so a
+    partial edit cannot leave an inverted range. Explicit nulls clear values.
+    """
+    editable = {
+        "title", "company", "location", "url", "description", "salary_min",
+        "salary_max", "salary_period", "tags", "date_posted", "is_remote",
+        "is_easy_apply", "apply_type",
+    }
+    if not changes or not changes.keys() <= editable:
+        raise ValueError("Only editable posting details may be updated")
+    db = await _get_db()
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+        cursor = await db.execute("SELECT salary_min, salary_max FROM jobs WHERE id = ?", (job_id,))
+        current = await cursor.fetchone()
+        if current is None:
+            return False
+        low = changes.get("salary_min", current["salary_min"])
+        high = changes.get("salary_max", current["salary_max"])
+        if low is not None and high is not None and low > high:
+            raise ValueError("Minimum pay cannot exceed maximum pay")
+        values = dict(changes)
+        if "tags" in values:
+            values["tags"] = json.dumps(values["tags"])
+        assignments = ", ".join(f"{field} = ?" for field in values)
+        await db.execute(f"UPDATE jobs SET {assignments} WHERE id = ?", (*values.values(), job_id))
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+
 async def update_job_status(job_id: str, status: str) -> bool:
     """Update a job's status. Returns True if the job existed."""
     db = await _get_db()
