@@ -257,7 +257,12 @@ final class ScoringServiceTests: XCTestCase {
                                                     config: AppConfig(), engine: mock)
         XCTAssertEqual(result.score, 72)
         XCTAssertEqual(result.reasoning, "Decent overlap")
-        XCTAssertNil(result.matchReportJSON)
+        // No gap breakdown was salvaged: the report holds only which engine scored it.
+        let report = try JSONSerialization.jsonObject(with: Data(result.matchReportJSON!.utf8)) as! [String: Any]
+        XCTAssertEqual(Set(report.keys), ["scored_by", "score_seconds"])
+        XCTAssertEqual(report["scored_by"] as? String, "endpoint:local-model")
+        XCTAssertNotNil(ScoreSource.seconds(matchReport: result.matchReportJSON))
+        XCTAssertEqual(ScoreSource.of(matchReport: result.matchReportJSON, reasoning: nil)?.label, "AI endpoint")
     }
 
     func testNumberScanFallback() async throws {

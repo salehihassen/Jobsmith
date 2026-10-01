@@ -40,7 +40,7 @@ settings:
     SWIFT_VERSION: "5.9"
     # Tracks package.json, the version source of truth for the whole repo.
     MARKETING_VERSION: 0.2.9
-    CURRENT_PROJECT_VERSION: 39
+    CURRENT_PROJECT_VERSION: 55
     CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: NO
 
@@ -107,8 +107,7 @@ targets:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoadsInWebContent: true
         NSLocalNetworkUsageDescription: >-
-          Jobsmith connects to your local AI server (e.g. LM Studio) for job
-          scoring and resume tailoring.
+          Jobsmith connects to AI servers on your network, such as one you run on your own computer.
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

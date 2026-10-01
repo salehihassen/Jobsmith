@@ -17,6 +17,9 @@ final class AppModel {
     let configStore: ConfigStore
 
     var config: AppConfig
+    /// The launch-time config load (plus its one-off migrations). The
+    /// onboarding gate awaits it instead of guessing with a sleep.
+    @ObservationIgnored private(set) var configLoad: Task<Void, Never>?
     var inbox: [Job] = []
     var pipeline: [Job] = []
     /// Soft-deleted postings — the Recently Deleted (recycle bin) contents,
@@ -82,7 +85,7 @@ final class AppModel {
             seedDemoData()
         }
         #endif
-        Task {
+        configLoad = Task {
             config = await configStore.load()
             await migrateInboxSortIfNeeded()
             #if DEBUG
@@ -536,10 +539,14 @@ final class AppModel {
             var failure: String?
             var paused = false
             var pauseReason: String?
+            var quick: [(job: Job, score: Double)] = []  // Quick match scores: the refine pass picks from them
             for job in batch {
                 if Task.isCancelled { break }
                 do {
-                    try await scoreOneWaitingOutRateLimits(job)
+                    let result = try await scoreOneWaitingOutRateLimits(job)
+                    if ScoreSource.of(matchReport: result.matchReportJSON, reasoning: nil) == .quickMatch {
+                        quick.append((job, result.score))
+                    }
                 } catch let error as ScoringError {
                     if case .interrupted(let detail) = error {
                         paused = true
@@ -568,6 +575,12 @@ final class AppModel {
                 LiveActivityController.shared.scoringProgress(done: scoreAllDone,
                                                               total: scoreAllTotal)
                 ContinuedRun.progress(.scoring, done: scoreAllDone, total: scoreAllTotal)
+            }
+            if !Task.isCancelled, !paused, failure == nil {
+                for (job, result) in await ScoringService.refineTop(quick, profile: config.profile, config: config) {
+                    try? jobStore.setScore(jobId: job.id, score: result.score, reasoning: result.reasoning,
+                                           matchReport: result.matchReportJSON)
+                }
             }
             let done = scoreAllDone
             // Cancellation is how the background window closes, so it parks the
@@ -737,6 +750,8 @@ final class AppModel {
         // probing HTTP here would wrongly veto background scoring whenever the
         // phone is away from the LAN, which is precisely when on-device shines.
         if config.ai.usesOnDevice(for: .fast) && AppleOnDeviceEngine.isAvailable { return true }
+        // Same for the local match model when it's picked for scoring and installed.
+        if [.localModel, .quickMatch].contains(ScoreSource.planned(config: config)) { return true }
         let engine = aiEngine
         let aiConfig = config.ai
         return await withTaskGroup(of: Bool?.self) { group in
@@ -772,13 +787,13 @@ final class AppModel {
     /// duration is undocumented and the continued task's own expiry (which
     /// cancels us) is the system's word on when to give up. Without the
     /// keep-alive the interruption propagates and the run parks as before.
-    private func scoreOneWaitingOutRateLimits(_ job: Job) async throws {
+    @discardableResult
+    private func scoreOneWaitingOutRateLimits(_ job: Job) async throws -> FitResult {
         var backoff: Duration = .seconds(15)
         var attempts = 0
         while true {
             do {
-                _ = try await scoreOne(job)
-                return
+                return try await scoreOne(job)
             } catch let error as ScoringError {
                 guard case .interrupted(let detail) = error,
                       ContinuedRun.isKeepingAlive, !Task.isCancelled
@@ -944,7 +959,7 @@ final class AppModel {
     @discardableResult
     func resumeInterruptedSearch() async -> Bool {
         guard !isFetching else { return false }
-        guard let run = try? searchRunStore.activeRun(), !run.isFinished else { return false }
+        guard let run = try? await searchRunStore.loadActiveRun(), !run.isFinished else { return false }
         activityStore.log("search_resumed",
                           "Resuming \(run.remainingSources.count) source(s) from the last search")
         await runSearch(run)

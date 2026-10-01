@@ -4,6 +4,7 @@ import JobsmithKit
 
 @main
 struct JobsmithStandaloneApp: App {
+    @UIApplicationDelegateAdaptor(DownloadAppDelegate.self) private var appDelegate
     @State private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
 
@@ -21,6 +22,7 @@ struct JobsmithStandaloneApp: App {
         BackgroundScheduler.register(model: model)
         NotificationManager.requestProvisionalAuthorization()
         NotificationManager.registerCategories()
+        DownloadPolicy.start()
         UNUserNotificationCenter.current().delegate = delegate
         // The Lock Screen Stop button: StopRunIntent executes in this process
         // and reaches the model through the bridge (the widget target only
@@ -70,7 +72,17 @@ struct JobsmithStandaloneApp: App {
                         break
                     }
                 }
-                .task { model.startAutoSync() }  // cover the initial launch
+                .task {
+                    model.startAutoSync()  // cover the initial launch
+                    // Resume a model download the user asked for (the background
+                    // session may have kept it going, or it stopped with the app).
+                    await model.configLoad?.value
+                    let ai = model.config.ai
+                    if !DownloadPolicy.isExpensiveNetwork {
+                        if ai.usesLocalMatchModel, !QuickMatchModel.isInstalled { NLIModelStore.quickMatch.install() }
+                        if ai.nliBetaEnabled, !NLIModel.isInstalled { NLIModelStore.shared.install() }
+                    }
+                }
         }
     }
 }
@@ -131,8 +143,8 @@ struct RootTabView: View {
             Button("Still working on it", role: .cancel) {}
         }
         .task {
-            // Give ConfigStore a beat to load, then gate on an empty profile.
-            try? await Task.sleep(for: .milliseconds(300))
+            // Gate on the loaded config, never on a guess about load timing.
+            await model.configLoad?.value
             // -SkipOnboarding is a UI-test hook, and the UI tests run against
             // the Debug build — a shipped binary always shows the wizard on a
             // fresh profile.
@@ -141,11 +153,15 @@ struct RootTabView: View {
             #else
             let skipOnboarding = false
             #endif
-            if model.config.profile.isEmpty && !skipOnboarding {
+            if !model.config.onboardingComplete && !skipOnboarding {
                 showOnboarding = true
             }
         }
-        .sheet(isPresented: $showOnboarding) {
+        .sheet(isPresented: $showOnboarding, onDismiss: {
+            // Finished or closed on purpose: don't ask again. (Killing the app
+            // mid-wizard doesn't dismiss, so the wizard comes back next launch.)
+            model.saveConfig { $0.onboardingComplete = true }
+        }) {
             OnboardingFlow()
                 .environment(model)
         }
@@ -159,4 +175,15 @@ struct RootTabView: View {
     }
 
     @State private var showApplyPrompt = false
+}
+
+/// Receives the system's "background download events are ready" relaunch and
+/// re-creates the model stores (their background sessions) to take them.
+final class DownloadAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        DownloadDelegate.backgroundCompletions[identifier] = completionHandler
+        _ = NLIModelStore.shared
+        _ = NLIModelStore.quickMatch
+    }
 }

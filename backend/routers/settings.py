@@ -4,7 +4,9 @@ onboarding, and dashboard stats/activity.
 """
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
@@ -15,6 +17,7 @@ from .. import app_state as state
 from .. import database as db
 from .. import ai_engine
 from .. import apple_bridge
+from .. import nli
 from .. import resume_generator
 from .. import resume_parser
 from .. import linkedin_profile_import
@@ -206,6 +209,127 @@ async def ai_status():
     return payload
 
 
+# Cloud provider presets (name, base_url, key_url). The iOS twin is
+# AIProviderPreset.all in JobsmithKit; a test on each side keeps them in step.
+PROVIDERS_PATH = Path(__file__).resolve().parent.parent / "ai_providers.json"
+
+
+@router.get("/api/ai/providers")
+async def ai_providers():
+    return json.loads(PROVIDERS_PATH.read_text(encoding="utf-8"))
+
+
+class ListModelsRequest(BaseModel):
+    base_url: str = ""
+    api_key: str = ""
+
+
+@router.post("/api/ai/models")
+async def ai_list_models(body: ListModelsRequest):
+    """The model ids a server lists, for the values in the request (the wizard's
+    picker, before anything is saved). Writes no config."""
+    base_url = body.base_url.strip()
+    if not base_url:
+        return {"ok": False, "models": [], "message": "Enter the server address first", "detail": ""}
+    api_key = body.api_key
+    if api_key == SECRET_MASK:
+        api_key = (state.load_config().get("ai") or {}).get("api_key", "")
+    try:
+        res = await asyncio.wait_for(
+            ai_engine.test_connection({"ai": {"base_url": base_url, "api_key": api_key.strip()}}), timeout=20)
+    except asyncio.TimeoutError:
+        res = {"connected": False, "error": f"Could not reach the server at {base_url}", "detail": "timed out"}
+    return {"ok": bool(res.get("connected")), "models": res.get("models", []),
+            "message": res.get("error") or "", "detail": res.get("detail") or ""}
+
+
+class TestChatRequest(BaseModel):
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+
+
+@router.post("/api/ai/test-chat")
+async def ai_test_chat(body: TestChatRequest):
+    """1-token chat ping against the values in the request. Writes no config.
+    A masked key (the field was never touched) means "the saved key"."""
+    api_key = body.api_key
+    if api_key == SECRET_MASK:
+        api_key = (state.load_config().get("ai") or {}).get("api_key", "")
+    return await ai_engine.ping_chat(body.base_url.strip(), api_key.strip(), body.model)
+
+
+class NliBetaUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/api/ai/nli/status")
+async def nli_status():
+    """Local match (on-device NLI): {enabled, installed, state, progress, size_bytes, error}."""
+    return nli.status(state.load_config())
+
+
+@router.put("/api/settings/nli-beta")
+async def set_nli_beta(body: NliBetaUpdate):
+    """Flip the switch. Turning it on starts (or resumes) the model download."""
+    cfg = state.load_config()
+    cfg.setdefault("ai", {}).setdefault("nli_beta", {})["enabled"] = bool(body.enabled)
+    state.save_config(cfg)
+    if body.enabled:
+        from ..nli import model
+        model.install()
+    return nli.status(cfg)
+
+
+@router.post("/api/ai/nli/install")
+async def nli_install():
+    """Start or resume the model download (also the Retry button)."""
+    from ..nli import model
+    model.install()
+    return nli.status(state.load_config())
+
+
+@router.delete("/api/ai/nli/model")
+async def nli_delete_model():
+    from ..nli import model
+    try:
+        model.delete()
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    return nli.status(state.load_config())
+
+
+@router.get("/api/ai/triage/status")
+async def triage_status():
+    """Quick match model (picked via ai.scoring_tier = local-match-model): {state, progress, size_bytes, error}."""
+    from ..nli import triage_model
+    return triage_model.status()
+
+
+@router.post("/api/ai/triage/install")
+async def triage_install():
+    from ..nli import triage_model
+    return triage_model.install()
+
+
+@router.delete("/api/ai/triage/model")
+async def triage_delete_model():
+    """Delete Quick match. If it is still the scoring tier, scoring goes back to
+    the AI model (`strong`) — otherwise the next scoring run would silently
+    download it again."""
+    from ..nli import triage_model
+    try:
+        result = triage_model.delete()
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc))
+    cfg = state.load_config()
+    reset = ai_engine.uses_quick_match(cfg)
+    if reset:
+        cfg["ai"]["scoring_tier"] = "strong"
+        state.save_config(cfg)
+    return {**result, "scoring_tier_reset": reset}
+
+
 @router.get("/api/config")
 async def get_config(
     request: Request,
@@ -222,10 +346,13 @@ async def get_config(
         "auto_apply": cfg.get("auto_apply", {}),
         "ai": {
             "base_url": cfg.get("ai", {}).get("base_url", ""),
+            "provider": cfg.get("ai", {}).get("provider", ""),
             "api_key": cfg.get("ai", {}).get("api_key", ""),
             "model": cfg.get("ai", {}).get("model", ""),
             "models": cfg.get("ai", {}).get("models", {}),
             "scoring_tier": cfg.get("ai", {}).get("scoring_tier", "strong"),
+            "triage_refine": bool(cfg.get("ai", {}).get("triage_refine", False)),
+            "nli_beta": {"enabled": bool((cfg.get("ai", {}).get("nli_beta") or {}).get("enabled", False))},
             "context_window": cfg.get("ai", {}).get("context_window", 8192),
         },
         "profile": {
@@ -408,7 +535,66 @@ async def onboarding_status():
         ),
         "extension_paired": bool(cfg.get("extension_paired", False)),
         "ai": ai_status,
+        # The wizard's Local card paints from this on first render.
+        "on_device": await _on_device_status(cfg),
+        "setup_mode": cfg.get("setup_mode", ""),
+        "provider": (cfg.get("ai") or {}).get("provider", ""),
     }
+
+
+SETUP_MODES = ("local", "cloud", "advanced")
+_SCORING_TIERS = ("strong", "fast", "utility", ai_engine.LOCAL_MATCH)
+
+
+class OnboardingAI(BaseModel):
+    """The wizard's shared exit: everything step 0 decided, saved in one go.
+    None means "leave as is" (e.g. Local does not touch base_url/api_key)."""
+    mode: str
+    provider: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    models: dict = {}  # {"strong"|"fast"|"utility": model id}
+    scoring_tier: Optional[str] = None
+    nli: Optional[bool] = None
+    triage: bool = False
+    verified: bool = True
+
+
+@router.post("/api/onboarding/ai")
+async def onboarding_save_ai(body: OnboardingAI):
+    """Save only the AI section plus setup_mode (per device, never synced),
+    then start any on-device model downloads the user opted into."""
+    if body.mode not in SETUP_MODES:
+        raise HTTPException(400, f"mode must be one of: {list(SETUP_MODES)}")
+    if body.scoring_tier is not None and body.scoring_tier not in _SCORING_TIERS:
+        raise HTTPException(400, f"scoring_tier must be one of: {list(_SCORING_TIERS)}")
+    cfg = state.load_config()
+    ai = cfg.setdefault("ai", {})
+    for key in ("provider", "base_url", "api_key"):
+        val = getattr(body, key)
+        if val is not None and val != SECRET_MASK:
+            ai[key] = val.strip()
+    models = ai.setdefault("models", {})
+    for tier, model in (body.models or {}).items():
+        if tier in ("strong", "fast", "utility") and isinstance(model, str):
+            # Base-overlay: keep any sibling per-tier keys (base_url/api_key).
+            models[tier] = {**(models.get(tier) or {}), "model": model.strip()}
+    if body.scoring_tier is not None:
+        ai["scoring_tier"] = body.scoring_tier
+    if body.nli is not None:
+        ai.setdefault("nli_beta", {})["enabled"] = bool(body.nli)
+    cfg["setup_mode"] = body.mode
+    cfg["ai_verified"] = bool(body.verified)
+    state.save_config(cfg)
+    ai_engine.clear_clients()
+    # Downloads start on Continue, in the background (both return at once).
+    if body.nli:
+        from ..nli import model
+        model.install()
+    if body.triage:
+        from ..nli import triage_model
+        triage_model.install()
+    return {"saved": True, "setup_mode": body.mode}
 
 
 @router.post("/api/onboarding/complete")
@@ -521,7 +707,7 @@ async def suggest_job_titles(body: SuggestTitlesRequest):
             timeout=120,
         )
     except asyncio.TimeoutError:
-        raise HTTPException(504, "The AI took too long to respond — is a model loaded in LM Studio?")
+        raise HTTPException(504, f"The AI took too long to respond — is {ai_engine.server_label(cfg)} running with a model loaded?")
     except Exception as exc:
         logger.exception("suggest_job_titles failed")
         raise HTTPException(502, f"AI request failed: {exc}")

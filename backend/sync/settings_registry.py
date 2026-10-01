@@ -195,6 +195,8 @@ REGISTRY: tuple[Setting, ...] = (
     Setting("ai.base_url", Cls.SYNC, Kind.STRING, "ai_connection", ios="ai.baseURL",
             note="Endpoint URL. A LAN address (e.g. 192.168.x) only resolves where reachable — "
                  "that's the user's call, hence its own toggle."),
+    Setting("ai.provider", Cls.SYNC, Kind.STRING, "ai_connection", ios="ai.provider",
+            note="Setup-wizard preset name (e.g. 'OpenRouter') or 'custom'; rides with ai.base_url."),
     Setting("ai.api_key", Cls.SYNC, Kind.STRING, "ai_connection", ios="ai.apiKey", api_masked=True,
             note="SYNCED by user decision — travels in the user-owned folder with the rest of the "
                  "AI Connection group. STILL api_masked=True: never leak it in the HTTP /api/config "
@@ -204,8 +206,8 @@ REGISTRY: tuple[Setting, ...] = (
                  "ai.models.strong.model (object may hold future per-tier params) — apply must "
                  "write .model via base-overlay so sibling keys survive. iOS: flat ai.strongModel."),
     Setting("ai.models.fast", Cls.SYNC, Kind.STRING, "ai_connection", ios="ai.fastModel",
-            note="See ai.models.strong. iOS may hold the 'apple-on-device' sentinel here — iOS "
-                 "MUST NOT export that value (skip the row) so it never lands on desktop."),
+            note="See ai.models.strong. iOS may hold the 'apple-on-device' or 'local-match-model' "
+                 "sentinel here — iOS MUST NOT export either (skip the row) so it never lands on desktop."),
     Setting("ai.models.utility", Cls.SYNC, Kind.STRING, "ai_connection", ios="ai.utilityModel",
             note="See ai.models.fast (same 'apple-on-device' skip rule)."),
     Setting("ai.temperature", Cls.SYNC, Kind.STRING, "ai_connection", ios="ai.temperature"),
@@ -254,6 +256,8 @@ REGISTRY: tuple[Setting, ...] = (
     Setting("linkedin.browser", Cls.LOCAL, Kind.ENUM, "_excluded", enum_values=("firefox", "chrome")),
     Setting("auto_apply.headless", Cls.LOCAL, Kind.BOOL, "_excluded"),
     Setting("auto_apply.use_browser_use", Cls.LOCAL, Kind.BOOL, "_excluded"),
+    # Local AI model (beta): the model is downloaded per machine, so the switch is too.
+    Setting("ai.nli_beta.enabled", Cls.LOCAL, Kind.BOOL, "_excluded"),
     Setting("sync.folder", Cls.LOCAL, Kind.STRING, "_excluded"),
     Setting("sync.device_id", Cls.LOCAL, Kind.STRING, "_excluded"),
     Setting("sync.device_label", Cls.LOCAL, Kind.STRING, "_excluded"),
@@ -271,6 +275,8 @@ REGISTRY: tuple[Setting, ...] = (
     Setting("sync.settings.general", Cls.LOCAL, Kind.BOOL, "_excluded"),
     Setting("sync.interval_seconds", Cls.LOCAL, Kind.INT, "_excluded"),
     Setting("onboarding_complete", Cls.LOCAL, Kind.BOOL, "_excluded"),
+    Setting("setup_mode", Cls.LOCAL, Kind.ENUM, "_excluded", enum_values=("local", "cloud", "advanced")),
+    Setting("ai_verified", Cls.LOCAL, Kind.BOOL, "_excluded"),
     Setting("tour_complete", Cls.LOCAL, Kind.BOOL, "_excluded"),
     Setting("extension.backend_url", Cls.LOCAL, Kind.STRING, "_excluded", ext="backendUrl"),
     # iOS UserDefaults device-local: jobsmith.sync.*, jobsmith.bgsearch.*,

@@ -44,7 +44,20 @@ struct JobDetailView: View {
 
                 if let reasoning = job.fitReasoning, !reasoning.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Eyebrow(text: "Why this score")
+                        HStack {
+                            Eyebrow(text: "Why this score")
+                            if let source = ScoreSource.of(matchReport: job.matchReport, reasoning: reasoning) {
+                                let secs = ScoreSource.seconds(matchReport: job.matchReport)
+                                let name = ScoreSource.previewOnly(matchReport: job.matchReport)
+                                    ? "\(source.label) · preview only" : source.label
+                                Label(secs.map { "\(name) · \(String(format: "%.1f", $0)) s" } ?? name,
+                                      systemImage: source.systemImage)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .accessibilityLabel("Scored by \(name)")
+                            }
+                        }
                         Text(reasoning)
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -98,6 +111,12 @@ struct JobDetailView: View {
                 }
                 .disabled(job.url.isEmpty)
             }
+            let planned = ScoreSource.planned(config: model.config)
+            Label("Scores with: \(planned.label)", systemImage: planned.systemImage)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
             if job.status == "review" || job.status == "applied" {
                 NavigationLink {
                     DocumentReviewView(jobId: job.id)

@@ -7,10 +7,13 @@ Uses the OpenAI-compatible API exposed by LM Studio.
 import asyncio
 import json
 import logging
+import math
 import random
 import re
+import time
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 from openai import (
     AsyncOpenAI,
@@ -21,6 +24,7 @@ from openai import (
 )
 
 from . import apple_bridge
+from . import nli
 from . import prompt_registry
 
 logger = logging.getLogger(__name__)
@@ -126,7 +130,7 @@ def _resolve_endpoint(config: dict, tier: str) -> tuple[str, str]:
     """
     ai_cfg = config.get("ai", {})
 
-    if _model(config, tier) == apple_bridge.SENTINEL_MODEL:
+    if _configured_model(config, tier) == apple_bridge.SENTINEL_MODEL:
         base = apple_bridge.bridge_base_url()
         if not base:
             # Strict routing: never quietly reroute an on-device tier to the
@@ -192,7 +196,7 @@ async def get_client(config: dict, tier: str = "strong") -> AsyncOpenAI:
     here, at the call boundary — every AI code path is already a coroutine, so
     nothing has to hop threads or reach for a private event loop.
     """
-    if _model(config, tier) == apple_bridge.SENTINEL_MODEL:
+    if _configured_model(config, tier) == apple_bridge.SENTINEL_MODEL:
         await apple_bridge.ensure_started()
     return _get_client(config, tier)
 
@@ -210,8 +214,16 @@ def clear_clients() -> None:
     _client_cache.clear()
 
 
-def _model(config: dict, tier: str = "strong") -> str:
-    """Return the model name for the given tier.
+NO_MODEL_MESSAGE = "No AI model is set up — open Settings → AI"
+
+
+class AINotConfigured(RuntimeError):
+    """No model is set for the requested tier (fresh install, or the user chose
+    "Set up AI later"). Raised instead of sending a made-up model id."""
+
+
+def _configured_model(config: dict, tier: str = "strong") -> str:
+    """The model name for a tier, or "" when none is set.
 
     Walks the tier fallback chain (e.g. utility → fast), then falls back
     to the legacy top-level ai.model key.
@@ -222,7 +234,15 @@ def _model(config: dict, tier: str = "strong") -> str:
         tier_model = models_cfg.get(t, {}).get("model")
         if tier_model:
             return tier_model
-    return ai_cfg.get("model", "local-model")
+    return ai_cfg.get("model") or ""
+
+
+def _model(config: dict, tier: str = "strong") -> str:
+    """The model name for a tier; raises AINotConfigured when none is set."""
+    model = _configured_model(config, tier)
+    if not model:
+        raise AINotConfigured(NO_MODEL_MESSAGE)
+    return model
 
 
 def _profile_summary(profile: dict, experiences: Optional[list] = None) -> str:
@@ -546,7 +566,104 @@ def parse_score_response(
     return None
 
 
+LOCAL_MATCH = "local-match-model"  # ai.scoring_tier value: Quick match scores, the Content tier covers the rest
+REFINE_SHARE = 0.15  # "Refine top matches": the NLI model re-scores this share of a run's Quick match scores
+
+
+def uses_quick_match(config: dict) -> bool:
+    return (config.get("ai") or {}).get("scoring_tier") == LOCAL_MATCH
+
+
 async def score_job_fit(
+    job: dict, profile: dict, config: dict
+) -> tuple[float, str, Optional[dict]]:
+    """
+    Score how well a job matches the candidate's profile (0-100).
+    Returns (score, reasoning, match_report); raises ScoringUnavailable when no
+    score can be produced. With Quick match picked as the scoring
+    tier (embedding triage, no LLM) it scores first and the LLM only
+    gets the jobs it can't judge. With Local match switched on
+    and installed, an unavailable scoring LLM falls back to the local NLI model.
+    """
+    if uses_quick_match(config):
+        result = await _score_job_fit_triage(job, profile)
+        if result is not None:
+            return result
+    try:
+        return await _score_job_fit_llm(job, profile, config)
+    except (ScoringUnavailable, apple_bridge.BridgeUnavailable) as exc:
+        if not nli.enabled(config):
+            raise
+        result = await _score_job_fit_nli(job, profile, config)
+        if result is None:
+            raise
+        logger.info("score_job_fit: LLM unavailable (%s); scored %r with the local model",
+                    exc, job.get("title", ""))
+        return result
+
+
+def _tagged(report: Optional[dict], scored_by: str, t0: float) -> Optional[dict]:
+    """The report with its source and scoring time (seconds), shown next to the score."""
+    if report is None:
+        return None
+    return {**report, "scored_by": scored_by, "score_seconds": round(time.perf_counter() - t0, 2)}
+
+
+async def _score_job_fit_triage(job: dict, profile: dict):
+    """(score, reasoning, match_report) from Quick match, or None (not installed / nothing to judge / error)."""
+    from .nli import triage, triage_model
+    if not triage_model.installed():
+        triage_model.install()  # picked but not downloaded (yet): fetch it, the LLM scores meanwhile
+        return None
+    t0 = time.perf_counter()
+    try:
+        model = await asyncio.to_thread(triage.get)
+        result = model and await asyncio.to_thread(model.score, job, profile)
+    except Exception:  # noqa: BLE001 — fall back to the LLM, never to a fake score
+        logger.exception("Quick match scoring failed for %s", job.get("title", ""))
+        return None
+    if not result:
+        return None
+    score, reasoning, report = result
+    clean = _sanitize_match_report(report)
+    extra = {k: report[k] for k in ("bucket", "preview") if k in report}
+    return score, reasoning, _tagged(clean and {**clean, **extra}, triage.SCORED_BY, t0)
+
+
+async def refine_top_matches(scored: list[tuple[dict, float]], profile: dict, config: dict):
+    """"Refine top matches with the detailed model" (ai.triage_refine, default off): the local NLI model re-scores
+    the top REFINE_SHARE of a run's Quick match scores when it is installed. Yields (job, score, reasoning, report).
+    Preview-only jobs (no requirement lines) are skipped: the NLI model has nothing to judge there either."""
+    from .nli.fit import req_lines
+    scored = [(j, s) for j, s in scored if req_lines(j.get("description") or "")]
+    if not (config.get("ai") or {}).get("triage_refine") or not scored or nli.get_scorer(config) is None:
+        return
+    top = sorted(scored, key=lambda js: js[1], reverse=True)[:math.ceil(REFINE_SHARE * len(scored))]
+    for job, _ in top:
+        result = await _score_job_fit_nli(job, profile, config)
+        if result is not None:
+            yield (job, *result)
+
+
+async def _score_job_fit_nli(job: dict, profile: dict, config: dict):
+    """(score, reasoning, match_report) from the local model, or None if it can't score this job."""
+    scorer = nli.get_scorer(config)
+    if scorer is None:
+        return None
+    from .nli import fit
+    t0 = time.perf_counter()
+    try:
+        result = await asyncio.to_thread(fit.score, job, profile, scorer)
+    except Exception:  # noqa: BLE001 — fall back to "unscored", never to a fake score
+        logger.exception("Local-model scoring failed for %s", job.get("title", ""))
+        return None
+    if result is None:
+        return None
+    score, reasoning, report = result
+    return score, reasoning, _tagged(_sanitize_match_report(report), "local_model", t0)
+
+
+async def _score_job_fit_llm(
     job: dict, profile: dict, config: dict
 ) -> tuple[float, str, Optional[dict]]:
     """
@@ -557,6 +674,8 @@ async def score_job_fit(
     """
     ai_cfg = config.get("ai", {})
     tier = ai_cfg.get("scoring_tier", "strong")
+    if tier == LOCAL_MATCH:
+        tier = "strong"
     client = await get_client(config, tier)
 
     prompt = prompt_registry.render_prompt(
@@ -1140,7 +1259,7 @@ async def batch_process_jobs(
 
 
 async def test_connection(config: dict) -> dict:
-    """Test connectivity to LM Studio. Returns status dict."""
+    """Test connectivity to the AI server (lists its models). Returns status dict."""
     try:
         # Inside the try: a strong tier set to Apple Intelligence can fail here
         # (bridge missing / Apple Intelligence off) and that is a connection
@@ -1150,4 +1269,75 @@ async def test_connection(config: dict) -> dict:
         model_ids = [m.id for m in models.data]
         return {"connected": True, "models": model_ids}
     except Exception as e:
-        return {"connected": False, "error": str(e)}
+        _, message = describe_ai_error(e, (config.get("ai") or {}).get("base_url", ""))
+        return {"connected": False, "error": message, "detail": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Setup-wizard connection test + plain-English errors
+# ---------------------------------------------------------------------------
+PING_TIMEOUT = 20.0
+
+
+def server_label(config: dict) -> str:
+    """How error copy names the AI server: the preset provider, else generic."""
+    provider = ((config or {}).get("ai") or {}).get("provider") or ""
+    return provider if provider and provider != "custom" else "your AI server"
+
+
+def describe_ai_error(exc: BaseException, base_url: str = "") -> tuple[str, str]:
+    """(code, plain-English message) for a failed AI call.
+
+    Shared by the setup wizard's ping and Settings' test_connection. The iOS
+    twin is AIErrorMapper (JobsmithKit) — keep the codes and wording in step.
+    """
+    if isinstance(exc, (AINotConfigured, apple_bridge.BridgeUnavailable)):
+        return "unavailable", str(exc)
+    if isinstance(exc, APIConnectionError):  # includes APITimeoutError
+        host = urlparse(base_url).hostname or base_url or "that address"
+        return "unreachable", f"Could not reach the server at {host}"
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status in (401, 403):
+        return "auth", "That API key was rejected"
+    if status == 402 or "insufficient_quota" in text or "insufficient quota" in text:
+        return "credit", "Your provider account has no credit"
+    if status == 404 or "model_not_found" in text or (
+        "model" in text and ("not found" in text or "does not exist" in text)
+    ):
+        return "model", "That model is not available on this account"
+    if status == 429:
+        return "rate_limit", "The provider is rate-limiting; try again in a minute"
+    return "error", str(exc) or type(exc).__name__
+
+
+async def ping_chat(base_url: str, api_key: str, model: str) -> dict:
+    """A real 1-token chat completion against exactly these values.
+
+    Reads and writes no config — the wizard tests what the user typed before
+    anything is saved. The Apple sentinel is routed through the on-device
+    bridge (availability check first). Returns {ok, code, message, detail}.
+    """
+    model = (model or "").strip()
+    if not model:
+        return {"ok": False, "code": "no_model", "message": "Pick a Writing model first", "detail": ""}
+    try:
+        if model == apple_bridge.SENTINEL_MODEL:
+            status = await asyncio.wait_for(apple_bridge.bridge_status(), timeout=PING_TIMEOUT)
+            if not status.get("available"):
+                raise apple_bridge.BridgeUnavailable(
+                    status.get("reason") or apple_bridge.REASON_UNSUPPORTED)
+            await apple_bridge.ensure_started()
+            base_url, api_key = apple_bridge.bridge_base_url() or "", _ON_DEVICE_KEY
+        elif not (base_url or "").strip():
+            # An empty base_url would make the SDK fall back to api.openai.com.
+            return {"ok": False, "code": "no_url", "message": "Enter the server address first", "detail": ""}
+        async with AsyncOpenAI(base_url=base_url, api_key=api_key or "lm-studio",
+                               timeout=PING_TIMEOUT, max_retries=0) as client:
+            await client.chat.completions.create(
+                model=model, messages=[{"role": "user", "content": "ping"}], max_tokens=1)
+        return {"ok": True, "code": "ok", "message": "", "detail": ""}
+    except Exception as exc:  # noqa: BLE001 — every failure is a result to show
+        code, message = describe_ai_error(exc, base_url)
+        return {"ok": False, "code": code, "message": message,
+                "detail": f"{type(exc).__name__}: {exc}"}

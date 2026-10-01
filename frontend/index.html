@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jobsmith</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="style.css?v=55">
+    <link rel="stylesheet" href="style.css?v=56">
 </head>
 <body>
     <aside class="sidebar" id="sidebar">
@@ -59,6 +59,11 @@
                     </button>
                     <div class="now-panel" id="now-panel" role="dialog" aria-label="Now — active runs" hidden></div>
                 </div>
+                <!-- On-device model downloads started by the setup wizard (obDownloadChip). -->
+                <button class="run-status-chip ob-dl-chip" id="ob-dl-chip" style="display:none" onclick="goAISettings()" title="Quick match / Local match downloads — open Settings → AI">
+                    <span class="run-chip-dot" aria-hidden="true"></span>
+                    <span id="ob-dl-chip-text"></span>
+                </button>
                 <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light theme">&#9790;</button>
                 <div class="notification-wrapper">
                     <button class="notification-bell" id="notification-bell" onclick="toggleNotificationCenter()">
@@ -176,7 +181,7 @@
                                             <button class="btn btn-ghost btn-sm" onclick="toggleAllSources(false)">None</button>
                                         </div>
                                         <label class="remote-toggle" style="display:flex;align-items:center;gap:6px;margin-top:10px" title="Override the Settings -> Search default for this fetch run"><input type="checkbox" id="fetch-auto-estimate-toggle" onchange="saveSalaryAutoIngest()"> Auto-estimate salaries on ingest</label>
-                                        <div id="fetch-indeed-hint" class="run-popover-hint">Indeed can take up to 400s (Cloudflare bypass + per-job description enrichment).</div>
+                                        <div id="fetch-indeed-hint" class="run-popover-hint">LinkedIn and Indeed are slow and brittle: they scrape pages built for people, can take minutes (Indeed up to 400s), and break when the site changes or blocks bots. Indeed is off unless you turn it on in Settings &rarr; Job Search.</div>
                                     </div>
                                 </div>
 
@@ -672,7 +677,8 @@
                         </div>
                         <div class="section-card">
                             <h2>LinkedIn Session</h2>
-                            <p class="section-hint">Sign into LinkedIn so auto-apply can access authenticated job pages.</p>
+                            <p class="section-hint">Sign into LinkedIn so auto-apply can access authenticated job pages. LinkedIn searches work without signing in.</p>
+                            <p class="section-hint"><strong>Slow and brittle:</strong> LinkedIn is scraped from pages built for people, so fetches can take minutes and break when LinkedIn changes its pages or rate-limits you.</p>
                             <div class="btn-row">
                                 <button class="btn btn-primary" id="linkedin-login-btn" onclick="linkedinLogin()">Sign in to LinkedIn</button>
                                 <button class="btn btn-secondary btn-sm" id="linkedin-check-btn" style="display:none" onclick="checkLinkedInSessionValidity()">Check Connection</button>
@@ -681,7 +687,9 @@
                             <div id="linkedin-status" class="ai-status" style="margin-top:10px"></div>
                         </div>
                         <div class="section-card">
-                            <h2>Indeed Session</h2>
+                            <h2>Indeed</h2>
+                            <label class="remote-toggle" style="margin-bottom:8px"><input type="checkbox" id="cfg-indeed-enabled"> Include Indeed in fetches</label>
+                            <p class="section-hint"><strong>Off by default. Slow and brittle:</strong> Indeed runs a real browser through Cloudflare, takes up to several minutes per fetch, and breaks when Indeed changes its pages or blocks bots. Needs no key.</p>
                             <p class="section-hint">Sign into Indeed so auto-apply can access authenticated job pages.</p>
                             <div class="btn-row">
                                 <button class="btn btn-primary" id="indeed-login-btn" onclick="indeedLogin()">Connect Indeed Account</button>
@@ -691,15 +699,19 @@
                         </div>
                         <div class="section-card">
                             <h2>Adzuna</h2>
-                            <p class="section-hint">Register at <a href="https://developer.adzuna.com/" target="_blank" rel="noopener">developer.adzuna.com</a> to get a free App ID and App Key.</p>
+                            <p class="section-hint">More listings plus better salary estimates. Free: <a href="https://developer.adzuna.com/" target="_blank" rel="noopener">sign up at developer.adzuna.com</a>, then paste the App ID and App Key here.</p>
                             <div class="form-group"><label>App ID</label><input type="password" id="cfg-adzuna-app-id" placeholder="Your Adzuna App ID" autocomplete="off"></div>
                             <div class="form-group"><label>App Key</label><input type="password" id="cfg-adzuna-app-key" placeholder="Your Adzuna App Key" autocomplete="off"></div>
+                            <div class="btn-row"><button type="button" class="btn btn-secondary btn-sm" onclick="testSourceKey('adzuna')">Test keys</button></div>
+                            <div id="adzuna-test-status" class="ai-status" style="margin-top:8px"></div>
                         </div>
                         <div class="section-card">
                             <h2>USAJobs</h2>
-                            <p class="section-hint">Free API -- register at <a href="https://developer.usajobs.gov/APIRequest/Index" target="_blank" rel="noopener">developer.usajobs.gov</a></p>
+                            <p class="section-hint">US federal government jobs. Free: <a href="https://developer.usajobs.gov/APIRequest/Index" target="_blank" rel="noopener">request a key at developer.usajobs.gov</a>, then paste it with the email you registered.</p>
                             <div class="form-group"><label>Email (User-Agent)</label><input type="email" id="cfg-usajobs-email" placeholder="your@email.com"></div>
-                            <div class="form-group"><label>API Key</label><input type="text" id="cfg-usajobs-key" placeholder="Your USAJobs API key"></div>
+                            <div class="form-group"><label>API Key</label><input type="password" id="cfg-usajobs-key" placeholder="Your USAJobs API key" autocomplete="off"></div>
+                            <div class="btn-row"><button type="button" class="btn btn-secondary btn-sm" onclick="testSourceKey('usajobs')">Test key</button></div>
+                            <div id="usajobs-test-status" class="ai-status" style="margin-top:8px"></div>
                         </div>
                         <div class="section-card">
                             <h2>Data Management</h2>
@@ -747,15 +759,18 @@
                 <div id="stab-integrations" class="settings-tab-panel">
                     <div class="settings-grid">
                         <div class="section-card settings-basic">
-                            <h2>AI Connection</h2>
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                                <h2>AI Connection</h2>
+                                <button class="btn btn-secondary btn-sm" id="ai-change-setup" onclick="obChangeSetup()">Change setup&hellip;</button>
+                            </div>
                             <div class="form-group" style="display:flex;gap:8px;align-items:flex-end">
                                 <div style="flex:1"><label>Server URL</label><input type="text" id="cfg-ai-url" placeholder="http://localhost:1234/v1"></div>
                                 <button class="btn btn-secondary btn-sm" style="white-space:nowrap;margin-bottom:0" onclick="loadAiModels({ persistConnection: true })">Load Models</button>
                             </div>
                             <div class="form-group">
                                 <label>API Key</label>
-                                <input type="password" id="cfg-ai-api-key" placeholder="Optional — not needed for LM Studio" autocomplete="off">
-                                <span class="hint">Any OpenAI-compatible server works (LM Studio, Ollama, OpenRouter, OpenAI…). Set a key for hosted providers; LM Studio ignores it.</span>
+                                <input type="password" id="cfg-ai-api-key" placeholder="Optional — only hosted providers need one" autocomplete="off">
+                                <span class="hint">Any OpenAI-compatible server works, hosted or one you run yourself. Set a key for hosted providers; most local servers ignore it.</span>
                             </div>
                             <!-- Apple Intelligence: revealed by loadSettings() only when
                                  /api/ai/status reports on_device.supported. -->
@@ -768,6 +783,16 @@
                                 <label class="ai-ondevice-opt"><input type="checkbox" id="cfg-ai-ondevice-fast" onchange="applyOnDeviceTier('fast')"> Use Apple Intelligence for <strong>Navigator</strong></label>
                                 <label class="ai-ondevice-opt"><input type="checkbox" id="cfg-ai-ondevice-utility" onchange="applyOnDeviceTier('utility')"> Use Apple Intelligence for <strong>Utility</strong></label>
                                 <p class="ai-tier-hint" id="ai-ondevice-warn" style="display:none;color:var(--accent-red);margin-top:6px"></p>
+                            </div>
+                            <!-- Local match: one switch for the on-device NLI model. -->
+                            <div id="ai-nli-block" style="margin:12px 0 4px">
+                                <label class="ai-ondevice-opt"><input type="checkbox" id="cfg-ai-nli-beta" onchange="saveNliBeta()"> <strong>Local match</strong> <span class="hint">(on-device, beta)</span></label>
+                                <p class="ai-tier-hint">Fills application forms from your profile without an LLM and scores jobs when no AI endpoint is reachable. Downloads about <span id="ai-nli-size">690 MB</span>.</p>
+                                <p class="ai-tier-hint" id="ai-nli-status" style="margin-top:4px"></p>
+                                <div class="btn-row" style="margin-top:6px">
+                                    <button class="btn btn-secondary btn-sm" id="ai-nli-retry" style="display:none" onclick="installNliModel()">Retry download</button>
+                                    <button class="btn btn-secondary btn-sm" id="ai-nli-delete" style="display:none" onclick="deleteNliModel()">Delete model</button>
+                                </div>
                             </div>
                             <div class="ai-tier-group">
                                 <div class="ai-tier">
@@ -801,14 +826,25 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="form-group settings-advanced" style="margin-top:8px">
-                                <label>Scoring Tier</label>
-                                <select id="cfg-scoring-tier" style="width:100%">
-                                    <option value="strong">Content (highest-quality scores)</option>
-                                    <option value="utility">Utility (avoids model swap during ingestion)</option>
-                                    <option value="fast">Navigator</option>
+                            <div class="form-group" style="margin-top:8px">
+                                <label>Job scoring</label>
+                                <select id="cfg-scoring-tier" style="width:100%" onchange="scoringTierChanged()">
+                                    <option value="local-match-model">Quick match (on-device, free)</option>
+                                    <option value="strong">AI model: Content (highest-quality scores)</option>
+                                    <option value="utility">AI model: Utility (avoids model swap during ingestion)</option>
+                                    <option value="fast">AI model: Navigator</option>
                                 </select>
-                                <p class="ai-tier-hint" style="margin-top:4px">Which tier's model judges job-fit. Set to <strong>Utility</strong> so scoring and the salary-estimator share one model — keeps LM Studio from swapping models on every ingested job. Switch back to <strong>Content</strong> for the most accurate scores.</p>
+                                <div id="ai-triage-block" style="display:none;margin-top:6px">
+                                    <p class="ai-tier-hint">Quick match scores every job on this computer in a fraction of a second, from how well your profile covers each requirement line. Jobs it can't judge go to the Content model. Downloads about <span id="ai-triage-size">134 MB</span>.</p>
+                                    <p class="ai-tier-hint" id="ai-triage-status" style="margin-top:4px"></p>
+                                    <label class="ai-ondevice-opt"><input type="checkbox" id="cfg-triage-refine"> Refine top matches with the detailed model</label>
+                                    <p class="ai-tier-hint">After a scoring run, Local match re-scores the top 15% of Quick matches, more slowly and more carefully. Needs Local match switched on and downloaded.</p>
+                                    <div class="btn-row" style="margin-top:6px">
+                                        <button class="btn btn-secondary btn-sm" id="ai-triage-retry" style="display:none" onclick="installTriageModel()">Retry download</button>
+                                        <button class="btn btn-secondary btn-sm" id="ai-triage-delete" style="display:none" onclick="deleteTriageModel()">Delete model</button>
+                                    </div>
+                                </div>
+                                <p class="ai-tier-hint" style="margin-top:4px">What judges job fit. Quick match is free and runs on this computer; an AI model is slower but reads each posting in full. Set to <strong>Utility</strong> so scoring and the salary-estimator share one model — keeps a local AI server from swapping models on every ingested job. Switch back to <strong>Content</strong> for the most accurate scores.</p>
                             </div>
                             <div class="form-group settings-advanced" style="margin-top:8px">
                                 <label>Context Window</label>
@@ -1180,7 +1216,7 @@
     </div>
 
     <!-- ============ First-run Onboarding Wizard ============ -->
-    <!-- AI job-title suggester modal (used from Settings → Search and the wizard) -->
+    <!-- AI job-title suggester modal (used from Settings → Job Search and the wizard) -->
     <div id="ts-modal" class="ts-modal" style="display:none">
         <div class="ts-modal-backdrop" onclick="tsClose()"></div>
         <div class="ts-modal-content">
@@ -1203,43 +1239,120 @@
             </div>
 
             <div class="ob-stepper" id="ob-stepper">
-                <div class="ob-step" data-step="0"><span class="ob-dot">1</span><span class="ob-step-label">Connect AI</span></div>
+                <div class="ob-step" data-step="0"><span class="ob-dot">1</span><span class="ob-step-label">AI</span></div>
                 <div class="ob-step" data-step="1"><span class="ob-dot">2</span><span class="ob-step-label">R&eacute;sum&eacute;</span></div>
                 <div class="ob-step" data-step="2"><span class="ob-dot">3</span><span class="ob-step-label">Profile</span></div>
                 <div class="ob-step" data-step="3"><span class="ob-dot">4</span><span class="ob-step-label">Job Search</span></div>
-                <div class="ob-step" data-step="4"><span class="ob-dot">5</span><span class="ob-step-label">Finish</span></div>
+                <div class="ob-step" data-step="4"><span class="ob-dot">5</span><span class="ob-step-label">Sources</span></div>
                 <div class="ob-step" data-step="5" id="ob-step-review" style="display:none"><span class="ob-dot">6</span><span class="ob-step-label">Review</span></div>
             </div>
 
             <div class="ob-body">
-                <!-- Step 0: AI -->
+                <!-- Step 0: AI — three cards, one shared exit (Continue = test + save) -->
                 <div class="ob-panel active" data-panel="0">
-                    <h2>Connect your AI</h2>
-                    <p class="ob-lead">Jobsmith works with any OpenAI-compatible server — local like LM Studio or Ollama (fully private), or hosted like OpenRouter or OpenAI. Point it at your server, then pick the models to use.</p>
-                    <div class="form-group"><label>Server base URL</label><input type="text" id="ob-ai-url" placeholder="http://localhost:1234/v1"></div>
-                    <div class="form-group"><label>API key <span class="hint">(optional)</span></label><input type="password" id="ob-ai-api-key" placeholder="Only needed for hosted providers" autocomplete="off"></div>
-                    <div style="display:flex;gap:10px;align-items:center;margin:8px 0 4px">
-                        <button class="btn btn-primary btn-sm" onclick="obTestAI()">Test connection</button>
-                        <span id="ob-ai-status" class="ob-status">Not tested yet</span>
+                    <h2>How should Jobsmith think?</h2>
+                    <p class="ob-lead">You can change this any time in Settings &rarr; AI.</p>
+                    <div class="ob-mode-cards" role="radiogroup" aria-label="AI setup">
+                        <button type="button" class="ob-mode-card" id="ob-mode-local" role="radio" aria-checked="false" onclick="obSelectMode('local')">
+                            <span class="ob-mode-title">Local</span>
+                            <span class="ob-mode-body">Runs privately on this device with Apple Intelligence. Free, nothing to set up. Writing quality is basic; you can connect a cloud provider later for stronger r&eacute;sum&eacute;s.</span>
+                            <span class="ob-mode-reason" id="ob-local-reason" style="display:none"></span>
+                        </button>
+                        <button type="button" class="ob-mode-card" id="ob-mode-cloud" role="radio" aria-checked="false" onclick="obSelectMode('cloud')">
+                            <span class="ob-mode-title">Cloud</span>
+                            <span class="ob-mode-body">Use an AI provider such as OpenAI, Anthropic or OpenRouter. You bring the server address and an API key. Your provider may charge per use.</span>
+                        </button>
+                        <button type="button" class="ob-mode-card" id="ob-mode-advanced" role="radio" aria-checked="false" onclick="obSelectMode('advanced')">
+                            <span class="ob-mode-title">Advanced</span>
+                            <span class="ob-mode-body">Full control: any server, a different model per task, and local model switches.</span>
+                        </button>
                     </div>
-                    <div class="form-row-3" style="margin-top:14px">
-                        <div class="form-group"><label>Content model <span class="hint">(strong)</span></label><select id="ob-ai-model-strong"><option value="">—</option></select></div>
-                        <div class="form-group"><label>Navigator model <span class="hint">(fast)</span></label><select id="ob-ai-model-fast"><option value="">—</option></select></div>
-                        <div class="form-group"><label>Utility model</label><select id="ob-ai-model-utility"><option value="">—</option></select></div>
+                    <button class="btn btn-ghost btn-sm" id="ob-local-recheck" style="display:none" onclick="obCheckLocal()">Check again</button>
+
+                    <div class="ob-sub" id="ob-sub-local" style="display:none">
+                        <label class="ai-ondevice-opt"><input type="checkbox" id="ob-local-downloads" checked onchange="obReadForm()"> <span class="ob-rec">Recommended</span> Download Quick match and Local match (about <span id="ob-local-size">…</span> MB) for faster job scoring and smarter Apply Assist.</label>
                     </div>
-                    <!-- Shown by obApplyAIStatus() only when no endpoint answered and
-                         this Mac's built-in model can. -->
-                    <div id="ob-ai-ondevice" style="display:none;margin-top:14px">
-                        <p class="ob-hint" style="margin-bottom:8px">No server answered &mdash; but this Mac has <strong>Apple Intelligence</strong>. Jobsmith can use it for job-fit scoring and short tasks with no setup at all. It is a small model, so r&eacute;sum&eacute;s and cover letters still want a real endpoint (LM Studio is the easy local option) &mdash; you can add one later in Settings.</p>
-                        <button class="btn btn-primary btn-sm" id="ob-ai-ondevice-btn" onclick="obUseAppleIntelligence()">Use built-in Apple Intelligence</button>
+
+                    <div class="ob-sub" id="ob-sub-cloud" style="display:none">
+                        <div class="form-group"><label>Provider</label><select id="ob-cloud-provider" onchange="obSelectProvider(this.value)"></select></div>
+                        <div class="form-group">
+                            <label>Server address</label>
+                            <input type="text" id="ob-cloud-url" placeholder="https://your-server/v1" onchange="obCloudUrlChanged()">
+                            <a href="#" class="ob-link" id="ob-cloud-edit-url" onclick="obEditAddress(); return false">Edit address</a>
+                            <span class="hint" id="ob-cloud-url-help">Any OpenAI-compatible server, including one you run yourself.</span>
+                            <span class="hint ob-warn" id="ob-cloud-url-warn" style="display:none">This address does not end in /v1. Most servers need it; check your server&rsquo;s docs.</span>
+                        </div>
+                        <div class="form-group">
+                            <label>API key <span class="hint" id="ob-cloud-key-opt">(optional)</span></label>
+                            <input type="password" id="ob-cloud-key" autocomplete="off" oninput="obKeyTyped()" onchange="obListModels()">
+                            <a class="ob-link" id="ob-cloud-key-link" target="_blank" rel="noopener" style="display:none">Get an API key</a>
+                        </div>
+                        <div class="form-group">
+                            <label>Writing model <span class="hint">(r&eacute;sum&eacute;s and cover letters)</span></label>
+                            <div id="ob-model-picker" style="display:none">
+                                <input type="search" id="ob-model-search" placeholder="Search models" oninput="obRenderModelList()">
+                                <select id="ob-model-list" size="7" onchange="obPickWriting(this.value)"></select>
+                                <label class="ai-ondevice-opt"><input type="checkbox" id="ob-model-showall" onchange="obRenderModelList()"> Show all models</label>
+                            </div>
+                            <div id="ob-model-free" style="display:none">
+                                <input type="text" id="ob-model-id" placeholder="Model ID" oninput="obPickWriting(this.value)">
+                                <span class="hint" id="ob-model-error"></span>
+                            </div>
+                            <span class="ob-status" id="ob-model-status"></span>
+                        </div>
+                        <details id="ob-cloud-more">
+                            <summary>Use different models for scoring</summary>
+                            <div class="form-row-2" style="margin-top:8px">
+                                <div class="form-group"><label>Scoring</label><select id="ob-cloud-scoring" onchange="obReadForm()"><option value="">Same as Writing model</option></select></div>
+                                <div class="form-group"><label>Quick helpers</label><select id="ob-cloud-helpers" onchange="obReadForm()"><option value="">Same as Writing model</option></select></div>
+                            </div>
+                        </details>
+                        <label class="ai-ondevice-opt"><input type="checkbox" id="ob-cloud-triage" onchange="obReadForm()"> Also download Quick match (about <span id="ob-triage-size">…</span> MB) for faster, free job scoring.</label>
                     </div>
-                    <p class="ob-hint">No server yet? You can continue and configure AI later in Settings &rarr; Integrations.</p>
+
+                    <div class="ob-sub" id="ob-sub-advanced" style="display:none">
+                        <div class="form-group"><label>Provider <span class="hint">(shortcut)</span></label><select id="ob-adv-provider" onchange="obAdvProvider(this.value)"></select></div>
+                        <div class="form-group"><label>Server base URL</label><input type="text" id="ob-ai-url" placeholder="https://your-server/v1" onchange="obReadForm()"></div>
+                        <div class="form-group"><label>API key <span class="hint">(optional)</span></label><input type="password" id="ob-ai-api-key" autocomplete="off" onchange="obReadForm()"></div>
+                        <div style="display:flex;gap:10px;align-items:center;margin:8px 0 4px">
+                            <button class="btn btn-secondary btn-sm" onclick="obTestAI()">Load models</button>
+                            <span id="ob-adv-status" class="ob-status"></span>
+                        </div>
+                        <div class="form-row-3" style="margin-top:14px">
+                            <div class="form-group"><label>Writing <span class="hint">(strong)</span></label><select id="ob-ai-model-strong" onchange="obReadForm()"><option value="">—</option></select></div>
+                            <div class="form-group"><label>Navigator <span class="hint">(fast)</span></label><select id="ob-ai-model-fast" onchange="obReadForm()"><option value="">—</option></select></div>
+                            <div class="form-group"><label>Quick helpers <span class="hint">(utility)</span></label><select id="ob-ai-model-utility" onchange="obReadForm()"><option value="">—</option></select></div>
+                        </div>
+                        <div class="form-row-2">
+                            <div class="form-group"><label>Job scoring</label>
+                                <select id="ob-adv-scoring" onchange="obReadForm()">
+                                    <option value="strong">Writing model</option>
+                                    <option value="fast">Navigator model</option>
+                                    <option value="utility">Quick helpers model</option>
+                                    <option value="local-match-model">Quick match (on-device, free)</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label>&nbsp;</label>
+                                <label class="ai-ondevice-opt"><input type="checkbox" id="ob-adv-nli" onchange="obReadForm()"> Local match (smarter Apply Assist, on-device)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ob-exit" id="ob-ai-exit">
+                        <span id="ob-ai-status" class="ob-status"></span>
+                        <a href="#" class="ob-link" id="ob-ai-details-btn" style="display:none" onclick="obToggleDetails(); return false">Show details</a>
+                        <pre id="ob-ai-details" class="ob-details" style="display:none"></pre>
+                        <div id="ob-ai-fail-actions" style="display:none;margin-top:8px">
+                            <button class="btn btn-secondary btn-sm" onclick="obContinueAnyway()">Continue anyway</button>
+                        </div>
+                    </div>
+                    <p class="ob-hint"><a href="#" class="ob-link" id="ob-ai-later" onclick="obSetupLater(); return false">Set up AI later</a></p>
                 </div>
 
                 <!-- Step 1: Resume / LinkedIn -->
                 <div class="ob-panel" data-panel="1">
                     <h2>Import your r&eacute;sum&eacute; or LinkedIn profile</h2>
-                    <p class="ob-lead">Upload a PDF or DOCX (or paste the text) and your local AI will fill in your profile. Nothing is sent to the cloud.</p>
+                    <p class="ob-lead">Upload a PDF or DOCX (or paste the text) and <span id="ob-resume-privacy">your AI will fill in your profile.</span></p>
                     <div class="ob-dropzone" id="ob-dropzone" onclick="document.getElementById('ob-resume-file').click()">
                         <input type="file" id="ob-resume-file" accept=".pdf,.docx,.txt,.md" style="display:none" onchange="obFileChosen(this)">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -1286,7 +1399,7 @@
                 <!-- Step 3: Job search -->
                 <div class="ob-panel" data-panel="3">
                     <h2>What jobs should we look for?</h2>
-                    <p class="ob-lead">These drive the job feed. You can refine them anytime in Settings &rarr; Search &mdash; where you can also follow specific companies' job boards (Greenhouse, Lever, Ashby, Workable, Recruitee) with a board finder and AI company suggestions.</p>
+                    <p class="ob-lead">These drive the job feed. On the next step Jobsmith suggests companies to follow from these and your profile. You can refine all of it anytime in Settings &rarr; Job Search.</p>
                     <div class="form-group"><label>Keywords <span class="hint">(comma-separated)</span></label><input type="text" id="ob-keywords" placeholder="software engineer, backend developer">
                         <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
                             <button type="button" class="btn btn-secondary btn-sm" onclick="openTitleSuggest('ob-keywords', true)">&#10024; Suggest titles with AI</button>
@@ -1300,29 +1413,56 @@
                     </div>
                 </div>
 
-                <!-- Step 4: Optional -->
+                <!-- Step 4: Sources -->
                 <div class="ob-panel" data-panel="4">
-                    <h2>Optional extras</h2>
-                    <p class="ob-lead">All optional — skip any of these and add them later from Settings.</p>
-                    <div class="section-card" style="margin-bottom:14px">
-                        <h3 style="margin:0 0 10px;font-size:14px">Salary estimator</h3>
-                        <div class="form-row-2">
-                            <div class="form-group"><label>Adzuna App ID</label><input type="text" id="ob-adzuna-app-id"></div>
-                            <div class="form-group"><label>Adzuna App Key</label><input type="text" id="ob-adzuna-app-key"></div>
-                        </div>
-                        <div class="form-group"><label>BLS API key <span class="hint">(optional)</span></label><input type="text" id="ob-bls-key"></div>
+                    <h2>Where jobs come from</h2>
+                    <p class="ob-lead">Nothing to set up here. These sources work now with no account or key:</p>
+                    <div id="ob-ready-sources" class="ob-ready-sources"></div>
+                    <p class="ob-hint" id="ob-slow-note">LinkedIn is slow and brittle: it's scraped from pages built for people, so fetches can take minutes and break when LinkedIn changes. Indeed is the same and stays off unless you turn it on in Settings &rarr; Job Search.</p>
+
+                    <div class="section-card" style="margin:14px 0">
+                        <h3 style="margin:0 0 4px;font-size:14px">Companies to follow</h3>
+                        <p class="ob-hint" style="margin:0 0 10px">Jobsmith pulls openings straight from these companies' own job boards. Picked from your profile, and every one is checked against a live board. Untick any you don't want.</p>
+                        <div id="ob-companies"></div>
                     </div>
+
+                    <details class="section-card ob-more-sources" style="margin-bottom:14px">
+                        <summary style="cursor:pointer;font-size:14px;font-weight:600">More sources with a free API key <span class="hint">(optional)</span></summary>
+                        <div style="margin-top:12px">
+                            <h3 style="margin:0 0 4px;font-size:13px">Adzuna</h3>
+                            <p class="ob-hint" style="margin:0 0 8px">More listings plus better salary estimates. <a href="https://developer.adzuna.com/" target="_blank" rel="noopener">Sign up at developer.adzuna.com</a>, then paste both values.</p>
+                            <div class="form-row-2">
+                                <div class="form-group"><label>Adzuna App ID</label><input type="password" id="ob-adzuna-app-id" autocomplete="off"></div>
+                                <div class="form-group"><label>Adzuna App Key</label><input type="password" id="ob-adzuna-app-key" autocomplete="off"></div>
+                            </div>
+                            <div class="btn-row"><button type="button" class="btn btn-secondary btn-sm" onclick="obTestSourceKey('adzuna')">Test keys</button></div>
+                            <div id="ob-adzuna-test-status" class="ai-status" style="margin-top:8px"></div>
+
+                            <h3 style="margin:16px 0 4px;font-size:13px">USAJobs</h3>
+                            <p class="ob-hint" style="margin:0 0 8px">US federal government jobs. <a href="https://developer.usajobs.gov/APIRequest/Index" target="_blank" rel="noopener">Request a key at developer.usajobs.gov</a>, then paste it with the email you registered.</p>
+                            <div class="form-row-2">
+                                <div class="form-group"><label>Registered email</label><input type="email" id="ob-usajobs-email" autocomplete="off"></div>
+                                <div class="form-group"><label>API key</label><input type="password" id="ob-usajobs-key" autocomplete="off"></div>
+                            </div>
+                            <div class="btn-row"><button type="button" class="btn btn-secondary btn-sm" onclick="obTestSourceKey('usajobs')">Test key</button></div>
+                            <div id="ob-usajobs-test-status" class="ai-status" style="margin-top:8px"></div>
+
+                            <h3 style="margin:16px 0 4px;font-size:13px">BLS <span class="hint">(salary estimates only)</span></h3>
+                            <p class="ob-hint" style="margin:0 0 8px">Fallback wage data when Adzuna has none. <a href="https://data.bls.gov/registrationEngine/" target="_blank" rel="noopener">Free at data.bls.gov</a>.</p>
+                            <div class="form-group"><label>BLS API key</label><input type="password" id="ob-bls-key" autocomplete="off"></div>
+                        </div>
+                    </details>
+
                     <div class="section-card">
-                        <h3 style="margin:0 0 10px;font-size:14px">Workday credentials <span class="hint">(used for auto-apply on Workday portals)</span></h3>
+                        <h3 style="margin:0 0 10px;font-size:14px">Workday credentials <span class="hint">(optional, used for auto-apply on Workday portals)</span></h3>
                         <div class="form-row-2">
                             <div class="form-group"><label>Workday email</label><input type="text" id="ob-workday-email"></div>
                             <div class="form-group"><label>Workday password</label><input type="password" id="ob-workday-password"></div>
                         </div>
-                        <p class="ob-hint" style="margin:8px 0 0">Later found under Settings &rarr; Integrations with the mode toggle set to Advanced.</p>
+                        <p class="ob-hint" style="margin:8px 0 0">Later found under Settings &rarr; Apply with the mode toggle set to Advanced.</p>
                     </div>
-                    <p class="ob-hint">Applying to jobs uses the Jobsmith browser extension &mdash; install it from <strong>Settings &rarr; Apply Assist</strong> once setup is done. The token pairs itself the first time you launch Apply Assist.</p>
-                    <p class="ob-hint">Tip: connect LinkedIn from Settings &rarr; Integrations for the widest job coverage.</p>
-                    <p class="ob-hint">Power users: Settings opens in Basic mode with the essentials &mdash; flip the toggle to <strong>Advanced</strong> to expose auto-apply tuning, the AI prompt editor (every prompt Jobsmith sends to your local model is editable), and backend logs.</p>
+                    <p class="ob-hint">Applying to jobs uses the Jobsmith browser extension &mdash; install it from <strong>Settings &rarr; Apply</strong> once setup is done. The token pairs itself the first time you launch Apply Assist.</p>
+                    <p class="ob-hint">Power users: Settings opens in Basic mode with the essentials &mdash; flip the toggle to <strong>Advanced</strong> to expose auto-apply tuning, the AI prompt editor (every prompt Jobsmith sends to your AI is editable), and backend logs.</p>
                 </div>
 
                 <!-- Step 5: Review changes (re-run with existing profile only) -->
@@ -1369,18 +1509,18 @@
     <!-- The Pipeline stage vocabulary (labels/order/colours) must exist before
          review.js and deck.js render the funnel, the tabs or the board. -->
     <script src="js/pipeline-stages.js?v=1"></script>
-    <script src="js/core.js?v=51"></script>
+    <script src="js/core.js?v=52"></script>
     <script src="js/dashboard.js?v=42"></script>
     <!-- The per-job action registry must define jobActions()/renderJobActions()
          before its consumers (jobs.js, review.js, deck.js) render anything. -->
     <script src="js/job-actions.js?v=1"></script>
     <script src="js/jobs.js?v=51"></script>
     <script src="js/review.js?v=43"></script>
-    <script src="js/settings.js?v=48"></script>
+    <script src="js/settings.js?v=49"></script>
     <script src="js/prompts.js?v=2"></script>
     <script src="js/sessions.js?v=34"></script>
     <script src="js/jobs-actions.js?v=42"></script>
     <script src="js/deck.js?v=14"></script>
-    <script src="js/onboarding.js?v=44"></script>
+    <script src="js/onboarding.js?v=45"></script>
 </body>
 </html>

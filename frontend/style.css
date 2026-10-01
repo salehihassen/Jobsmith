@@ -802,6 +802,8 @@ main:has(> #review.tab-content.active.view-board) {
     margin-bottom: 8px;
 }
 .run-popover .source-checkboxes { margin-bottom: 8px; }
+.source-checkboxes .source-tag { font-size: 10px; padding: 0 5px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-secondary); }
+.source-checkboxes label.source-locked { opacity: 0.55; cursor: default; }
 .run-popover-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); cursor: pointer; margin-bottom: 10px; }
 .run-popover-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
 .run-popover-row select { width: 100px; }
@@ -3550,6 +3552,19 @@ body[data-theme="light"] .tour-overlay .tour-dim {
 .ob-diff-old { color: var(--accent-red); text-decoration: line-through; word-break: break-word; opacity: 0.85; }
 .ob-diff-new { color: var(--accent-green); word-break: break-word; }
 
+/* Wizard Sources step */
+.ob-ready-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.ob-source-chip {
+    font-size: 12.5px; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+}
+.ob-company-row {
+    display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    margin-bottom: 6px; cursor: pointer; font-size: 13px; background: var(--bg-secondary);
+}
+.ob-company-row input { margin-top: 3px; }
+
 /* In-page replacements for window.confirm/prompt/alert — the desktop
    shell's webview doesn't implement native JS dialogs. */
 .app-dialog-overlay {
@@ -4126,3 +4141,26 @@ body[data-theme="light"] .cmdk-overlay { background: rgba(30,20,12,.28); }
 .gs-label { flex: 1; }
 
 .gs-action { flex: none; }
+
+/* Setup Assistant step 0: Local / Cloud / Advanced cards */
+.ob-mode-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.ob-mode-card {
+    display: flex; flex-direction: column; gap: 6px; text-align: left;
+    padding: 14px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--border-light); background: var(--bg-primary); color: var(--text-secondary);
+    font: inherit; font-size: 12px; line-height: 1.45; transition: border-color 0.15s, background 0.15s;
+}
+.ob-mode-card:hover:not(:disabled) { border-color: var(--accent); background: var(--bg-hover); }
+.ob-mode-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ob-mode-card:disabled { opacity: 0.55; cursor: not-allowed; }
+.ob-mode-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.ob-mode-reason { color: var(--accent-red); font-weight: 600; }
+.ob-sub { margin-top: 8px; }
+.ob-rec { font-size: 11px; font-weight: 600; color: var(--accent-green); text-transform: uppercase; letter-spacing: 0.05em; }
+.ob-link { font-size: 12px; color: var(--accent); margin-left: 6px; }
+.ob-warn { color: var(--accent-red); }
+.ob-exit { margin-top: 14px; }
+.ob-details { white-space: pre-wrap; font-size: 11px; color: var(--text-muted); max-height: 120px; overflow: auto; }
+#ob-model-list { width: 100%; margin-top: 6px; }
+.ob-dl-chip { cursor: default; }
+@media (max-width: 640px) { .ob-mode-cards { grid-template-columns: 1fr; } }

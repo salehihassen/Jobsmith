@@ -11,13 +11,23 @@ public struct AppConfig: Codable, Equatable, Sendable {
     public var apiKeys: APIKeys
     /// Prompt template overrides keyed by template id; defaults live in code.
     public var promptOverrides: [String: String]
+    /// Setup Assistant choice: "local" | "cloud" | "advanced" ("" = not chosen).
+    /// Device-local: not in the settings-sync registry.
+    public var setupMode: String
+    /// Set when the setup wizard is finished or dismissed; gates the wizard on
+    /// launch. Device-local. Configs from before the flag existed decode it as
+    /// "has a profile", so existing users are never re-prompted.
+    public var onboardingComplete: Bool
 
     public init(profile: Profile = Profile(), search: SearchConfig = SearchConfig(),
                 ai: AIConfig = AIConfig(), honesty: HonestyConfig = HonestyConfig(),
-                apiKeys: APIKeys = APIKeys(), promptOverrides: [String: String] = [:]) {
+                apiKeys: APIKeys = APIKeys(), promptOverrides: [String: String] = [:],
+                setupMode: String = "", onboardingComplete: Bool = false) {
         self.profile = profile; self.search = search; self.ai = ai
         self.honesty = honesty; self.apiKeys = apiKeys
         self.promptOverrides = promptOverrides
+        self.setupMode = setupMode
+        self.onboardingComplete = onboardingComplete
     }
 
     // Tolerant decoding, mirroring the sub-structs. Without it a single new
@@ -32,10 +42,12 @@ public struct AppConfig: Codable, Equatable, Sendable {
         honesty = c.lenient(HonestyConfig.self, .honesty, HonestyConfig())
         apiKeys = c.lenient(APIKeys.self, .apiKeys, APIKeys())
         promptOverrides = c.lenient([String: String].self, .promptOverrides, [:])
+        setupMode = c.lenient(String.self, .setupMode, "")
+        onboardingComplete = c.lenient(Bool.self, .onboardingComplete, !profile.isEmpty)
     }
 
     enum CodingKeys: String, CodingKey {
-        case profile, search, ai, honesty, apiKeys, promptOverrides
+        case profile, search, ai, honesty, apiKeys, promptOverrides, setupMode, onboardingComplete
     }
 }
 
@@ -147,6 +159,16 @@ public struct AIConfig: Codable, Equatable, Sendable {
     /// model fields as any endpoint model name.
     public static let onDeviceModelID = "apple-on-device"
 
+    /// Sentinel for the fast tier ("Scoring & form-fill") only: score jobs with
+    /// the local NLI model (`LocalNLI`). It is NOT an LLM — the tier chain skips
+    /// it, so every generative `.fast` call (essays, field mapping, retries)
+    /// resolves to the next model down the chain (the strong tier) and the
+    /// sentinel can never reach an engine. Device-local: never synced.
+    public static let localMatchModelID = "local-match-model"
+
+    /// Tier-model sentinels that name no endpoint model.
+    static let sentinelModelIDs: Set<String> = [onDeviceModelID, localMatchModelID]
+
     /// A saved AI connection the user can switch to in one tap: endpoint, key,
     /// and the per-tier model assignments. Models belong to the preset because
     /// they are endpoint-specific — an LM Studio model name means nothing to
@@ -177,9 +199,12 @@ public struct AIConfig: Codable, Equatable, Sendable {
     }
 
     public var engine: EngineKind
-    /// OpenAI-compatible endpoint, e.g. http://192.168.1.x:1234/v1 (LM Studio)
-    /// or https://openrouter.ai/api/v1.
+    /// OpenAI-compatible endpoint, e.g. http://192.168.1.x:1234/v1 (a server on
+    /// your network) or https://openrouter.ai/api/v1. Empty on a new install.
     public var baseURL: String
+    /// The Setup Assistant preset `baseURL` came from (`AIProviderPreset.name`),
+    /// or "custom". Synced with `baseURL` (settings registry `ai.provider`).
+    public var provider: String
     /// Bearer token for the live endpoint. A live credential, so `ConfigStore`
     /// round-trips it through the device Keychain (`SecretKey.aiAPIKey`) rather
     /// than this struct's JSON — see `SecretStore`. It stays a plain property so
@@ -203,21 +228,43 @@ public struct AIConfig: Codable, Equatable, Sendable {
     public var scoreAllCap: Int
     /// The user's saved connections, switchable from the AI settings screen.
     public var savedEndpoints: [SavedEndpoint]
+    /// "Local AI model (beta)": Apply Assist answers leftover fields from the
+    /// profile with an on-device NLI model, and scoring falls back to it when the
+    /// scoring LLM is unavailable. Device-local (the model lives on this device),
+    /// so it is not in the settings-sync registry. See `LocalNLI`.
+    public var nliBetaEnabled: Bool
+    /// Run the Local match model on the Neural Engine instead of the CPU (experimental;
+    /// Core ML falls back to the CPU for anything the Neural Engine can't run). Never the
+    /// GPU: it aborts in Metal on an A17. Device-local.
+    public var nliUseNeuralEngine: Bool
+    /// "Refine top matches with the detailed model": after a scoring run, the NLI model
+    /// re-scores the top 15% of Quick match scores (`ScoringService.refineTop`). Device-local.
+    public var triageRefine: Bool
+    /// Run Quick match's embedding model on the Neural Engine instead of the CPU (experimental,
+    /// same rules as `nliUseNeuralEngine`). Device-local.
+    public var triageUseNeuralEngine: Bool
 
     public init(engine: EngineKind = .openAICompatible,
-                baseURL: String = "http://localhost:1234/v1", apiKey: String = "",
+                baseURL: String = "", apiKey: String = "", provider: String = "",
                 utilityModel: String = "", fastModel: String = "", strongModel: String = "",
                 temperature: Double = 0.7, maxTokens: Int = 16384,
                 preferOnDeviceForLightTasks: Bool = false,
                 scoreAllCap: Int = 25,
-                savedEndpoints: [SavedEndpoint] = []) {
+                savedEndpoints: [SavedEndpoint] = [],
+                nliBetaEnabled: Bool = false, nliUseNeuralEngine: Bool = false,
+                triageRefine: Bool = false, triageUseNeuralEngine: Bool = false) {
         self.engine = engine; self.baseURL = baseURL; self.apiKey = apiKey
+        self.provider = provider
         self.utilityModel = utilityModel; self.fastModel = fastModel
         self.strongModel = strongModel
         self.temperature = temperature; self.maxTokens = maxTokens
         self.preferOnDeviceForLightTasks = preferOnDeviceForLightTasks
         self.scoreAllCap = scoreAllCap
         self.savedEndpoints = savedEndpoints
+        self.nliBetaEnabled = nliBetaEnabled
+        self.nliUseNeuralEngine = nliUseNeuralEngine
+        self.triageRefine = triageRefine
+        self.triageUseNeuralEngine = triageUseNeuralEngine
     }
 
     // Tolerant decoding: fields added or removed across builds must not fail
@@ -229,6 +276,7 @@ public struct AIConfig: Codable, Equatable, Sendable {
         engine = try c.decodeIfPresent(EngineKind.self, forKey: .engine) ?? d.engine
         baseURL = try c.decodeIfPresent(String.self, forKey: .baseURL) ?? d.baseURL
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? d.apiKey
+        provider = c.lenient(String.self, .provider, "")
         utilityModel = try c.decodeIfPresent(String.self, forKey: .utilityModel) ?? ""
         fastModel = try c.decodeIfPresent(String.self, forKey: .fastModel) ?? ""
         strongModel = try c.decodeIfPresent(String.self, forKey: .strongModel) ?? ""
@@ -237,7 +285,16 @@ public struct AIConfig: Codable, Equatable, Sendable {
         preferOnDeviceForLightTasks = try c.decodeIfPresent(Bool.self, forKey: .preferOnDeviceForLightTasks) ?? false
         scoreAllCap = try c.decodeIfPresent(Int.self, forKey: .scoreAllCap) ?? d.scoreAllCap
         savedEndpoints = try c.decodeIfPresent([SavedEndpoint].self, forKey: .savedEndpoints) ?? []
+        nliBetaEnabled = c.lenient(Bool.self, .nliBetaEnabled, false)
+        nliUseNeuralEngine = c.lenient(Bool.self, .nliUseNeuralEngine, false)
+        triageRefine = c.lenient(Bool.self, .triageRefine, false)
+        triageUseNeuralEngine = c.lenient(Bool.self, .triageUseNeuralEngine, false)
         migrateLegacyOnDeviceRouting()
+        // Retired "Use it for all job scoring" toggle → the fast-tier picker choice.
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        if nliBetaEnabled, legacy.lenient(Bool.self, .nliScoringPreferLocal, false) {
+            fastModel = AIConfig.localMatchModelID
+        }
     }
 
     /// Older builds routed on-device through the engine kind plus a
@@ -263,10 +320,13 @@ public struct AIConfig: Codable, Equatable, Sendable {
 
     /// Model name for a tier, walking the fallback chain
     /// (utility → fast → strong, then any non-empty, then "local-model").
-    /// May return the on-device sentinel.
+    /// May return the on-device sentinel, never the local-match one.
     public func model(for tier: ModelTier) -> String {
         chain(for: tier).first { !$0.isEmpty } ?? "local-model"
     }
+
+    /// Whether the fast tier is set to the local match model (scoring only).
+    public var usesLocalMatchModel: Bool { fastModel == AIConfig.localMatchModelID }
 
     /// Whether this tier resolves to Apple's on-device model.
     public func usesOnDevice(for tier: ModelTier) -> Bool {
@@ -280,23 +340,30 @@ public struct AIConfig: Codable, Equatable, Sendable {
         chain(for: tier).first { !$0.isEmpty && $0 != AIConfig.onDeviceModelID } ?? "local-model"
     }
 
+    /// The LLM models a tier may resolve to, in order. The local-match sentinel
+    /// is dropped here, centrally, so no engine or label ever sees it.
     private func chain(for tier: ModelTier) -> [String] {
+        let models: [String]
         switch tier {
-        case .utility: return [utilityModel, fastModel, strongModel]
-        case .fast: return [fastModel, strongModel]
-        case .strong: return [strongModel, fastModel]
+        case .utility: models = [utilityModel, fastModel, strongModel]
+        case .fast: models = [fastModel, strongModel]
+        case .strong: models = [strongModel, fastModel]
         }
+        return models.filter { $0 != AIConfig.localMatchModelID }
     }
 
-    /// Make `endpoint` the live connection. On-device tier assignments are
-    /// kept: the sentinel routes to the device, not to any endpoint, so the
-    /// user's "score on-device" choice survives an endpoint switch.
+    /// Make `endpoint` the live connection. Sentinel tier assignments
+    /// (on-device, local match model) are kept: they route to the device, not
+    /// to any endpoint, so they survive an endpoint switch.
     public mutating func apply(_ endpoint: SavedEndpoint) {
         baseURL = endpoint.baseURL
         apiKey = endpoint.apiKey
-        if strongModel != AIConfig.onDeviceModelID { strongModel = endpoint.strongModel }
-        if fastModel != AIConfig.onDeviceModelID { fastModel = endpoint.fastModel }
-        if utilityModel != AIConfig.onDeviceModelID { utilityModel = endpoint.utilityModel }
+        func keep(_ current: String, _ new: String) -> String {
+            AIConfig.sentinelModelIDs.contains(current) ? current : new
+        }
+        strongModel = keep(strongModel, endpoint.strongModel)
+        fastModel = keep(fastModel, endpoint.fastModel)
+        utilityModel = keep(utilityModel, endpoint.utilityModel)
     }
 
     /// Snapshot the live connection as a named preset.
@@ -313,9 +380,62 @@ public struct AIConfig: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, baseURL, apiKey, utilityModel, fastModel, strongModel
+        case engine, baseURL, apiKey, provider, utilityModel, fastModel, strongModel
         case temperature, maxTokens, preferOnDeviceForLightTasks, scoreAllCap
-        case savedEndpoints
+        case savedEndpoints, nliBetaEnabled, nliUseNeuralEngine, triageRefine, triageUseNeuralEngine
+    }
+
+    /// Keys still read (never written) so old configs migrate.
+    private enum LegacyKeys: String, CodingKey { case nliScoringPreferLocal }
+}
+
+/// Cloud provider presets for the Setup Assistant — name, base URL, API-key
+/// page. Twin of desktop `backend/ai_providers.json` (same rows, same order;
+/// KitTests.SetupAssistantTests reads that file to enforce it). "Custom" is
+/// not a row: the UI appends it.
+public struct AIProviderPreset: Equatable, Sendable, Identifiable {
+    public let name: String
+    public let baseURL: String
+    public let keyURL: String
+    public var id: String { name }
+
+    public static let all: [AIProviderPreset] = [
+        .init(name: "OpenAI", baseURL: "https://api.openai.com/v1", keyURL: "https://platform.openai.com/api-keys"),
+        .init(name: "Anthropic", baseURL: "https://api.anthropic.com/v1", keyURL: "https://console.anthropic.com/settings/keys"),
+        .init(name: "Google Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", keyURL: "https://aistudio.google.com/apikey"),
+        .init(name: "xAI (Grok)", baseURL: "https://api.x.ai/v1", keyURL: "https://console.x.ai"),
+        .init(name: "Mistral", baseURL: "https://api.mistral.ai/v1", keyURL: "https://console.mistral.ai/api-keys"),
+        .init(name: "Groq", baseURL: "https://api.groq.com/openai/v1", keyURL: "https://console.groq.com/keys"),
+        .init(name: "DeepSeek", baseURL: "https://api.deepseek.com/v1", keyURL: "https://platform.deepseek.com/api_keys"),
+        .init(name: "Together AI", baseURL: "https://api.together.xyz/v1", keyURL: "https://api.together.ai/settings/api-keys"),
+        .init(name: "Fireworks", baseURL: "https://api.fireworks.ai/inference/v1", keyURL: "https://fireworks.ai/account/api-keys"),
+        .init(name: "Cerebras", baseURL: "https://api.cerebras.ai/v1", keyURL: "https://cloud.cerebras.ai"),
+        .init(name: "NVIDIA NIM", baseURL: "https://integrate.api.nvidia.com/v1", keyURL: "https://build.nvidia.com"),
+        .init(name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1", keyURL: "https://openrouter.ai/keys"),
+    ]
+
+    /// Custom-URL clean-up (desktop `obNormalizeUrl`): add https:// when there
+    /// is no scheme, drop a pasted /chat/completions and trailing slashes.
+    public static func normalize(_ raw: String) -> String {
+        var u = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !u.isEmpty else { return "" }
+        if u.range(of: "^[a-zA-Z][a-zA-Z0-9+.-]*://", options: .regularExpression) == nil { u = "https://" + u }
+        while u.hasSuffix("/") { u.removeLast() }
+        if u.lowercased().hasSuffix("/chat/completions") { u.removeLast("/chat/completions".count) }
+        while u.hasSuffix("/") { u.removeLast() }
+        return u
+    }
+
+    /// Custom addresses warn (never block) without /v1. Presets never warn.
+    public static func lacksV1(_ raw: String) -> Bool {
+        let u = normalize(raw)
+        return !u.isEmpty && !u.hasSuffix("/v1")
+    }
+
+    /// Model ids that are obviously not chat models (desktop OB_NON_CHAT).
+    public static func isNonChat(_ id: String) -> Bool {
+        id.range(of: "embed|whisper|tts|rerank|moderation|dall-e|image",
+                 options: [.regularExpression, .caseInsensitive]) != nil
     }
 }
 
