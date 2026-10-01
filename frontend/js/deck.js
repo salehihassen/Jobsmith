@@ -718,33 +718,39 @@ function _applyBoardFilter() {
     if (typeof renderFunnel === 'function') renderFunnel();
 }
 
+let _boardLoadPromise = null;
+
 function renderBoard() {
+    if (_boardLoadPromise) return _boardLoadPromise;
     const host = document.getElementById('pipeline-board');
     if (!host) return Promise.resolve();
 
-    host.innerHTML = DECK_COLUMNS.map((c) => `
-        <div class="kcol" data-col="${c.key}" title="${escapeHtml(c.desc)}">
-            <div class="kcolhead">
-                <span class="cdot" style="background:${c.dot}"></span>
-                <b>${escapeHtml(c.label)}</b>
-                <span class="kct num" id="kct-${c.key}">·</span>
-            </div>
-            <div class="kbatch" id="kbatch-${c.key}" hidden><i></i></div>
-            <div class="kcards" id="kcards-${c.key}"><p class="placeholder">Loading…</p></div>
-        </div>`).join('')
-        + `<div class="kpasszone" id="kpasszone"><span>Drop here to <b>${escapeHtml(stageLabel('pass'))}</b></span></div>`
-        + `<div class="kboard-foot">Drag: ${escapeHtml(_boardLegendText())}</div>`;
+    if (!host.querySelector('.kcol')) {
+        host.innerHTML = DECK_COLUMNS.map((c) => `
+            <div class="kcol" data-col="${c.key}" title="${escapeHtml(c.desc)}">
+                <div class="kcolhead">
+                    <span class="cdot" style="background:${c.dot}"></span>
+                    <b>${escapeHtml(c.label)}</b>
+                    <span class="kct num" id="kct-${c.key}">·</span>
+                </div>
+                <div class="kbatch" id="kbatch-${c.key}" hidden><i></i></div>
+                <div class="kcards" id="kcards-${c.key}"><p class="placeholder">Loading…</p></div>
+            </div>`).join('')
+            + `<div class="kpasszone" id="kpasszone"><span>Drop here to <b>${escapeHtml(stageLabel('pass'))}</b></span></div>`
+            + `<div class="kboard-foot">Drag: ${escapeHtml(_boardLegendText())}</div>`;
 
-    _wireBoardDnD(host);
-    _applyBoardFilter();   // innerHTML wiped the state classes
+        _wireBoardDnD(host);
+        _applyBoardFilter();
+    }
 
-    return Promise.all([
+    _boardLoadPromise = Promise.all([
         loadColShortlisted(),
         loadColTailoring(),
         loadColReady(),
         loadColApplied(),
         loadColAttention(),
-    ]).catch(() => {});
+    ]).catch(() => {}).finally(() => { _boardLoadPromise = null; });
+    return _boardLoadPromise;
 }
 
 // Column counts go through the shared store (review.js setPipelineCount), which
@@ -752,6 +758,8 @@ function renderBoard() {
 // A failed load has no count, so the badge falls back to the '·' placeholder.
 function _renderCol(key, html, count) {
     const cards = document.getElementById(`kcards-${key}`);
+    // A background failure or an in-flight drag must leave usable cards alone.
+    if (_boardDragging || (cards && cards.dataset.loaded && typeof count !== 'number')) return;
     if (typeof count === 'number' && typeof setPipelineCount === 'function') {
         setPipelineCount(key, count);
     } else {
@@ -759,7 +767,12 @@ function _renderCol(key, html, count) {
         if (ct) ct.textContent = count;
     }
     if (!cards) return;
-    cards.innerHTML = html || `<p class="placeholder kcol-empty">Empty</p>`;
+    const nextHtml = html || `<p class="placeholder kcol-empty">Empty</p>`;
+    if (cards._boardHtml !== nextHtml) {
+        cards.innerHTML = nextHtml;
+        cards._boardHtml = nextHtml;
+    }
+    if (typeof count === 'number') cards.dataset.loaded = '1';
 }
 
 async function loadColShortlisted() {
@@ -803,8 +816,8 @@ async function loadColApplied() {
 async function loadColAttention() {
     try {
         const [failed, ip] = await Promise.all([
-            api('/api/applications/failed?limit=50').catch(() => []),
-            api('/api/applications/in-progress').catch(() => ({})),
+            api('/api/applications/failed?limit=50'),
+            api('/api/applications/in-progress'),
         ]);
         const needs = (ip && ip.needs_attention) || [];
         const list = (failed || []).concat(needs);
