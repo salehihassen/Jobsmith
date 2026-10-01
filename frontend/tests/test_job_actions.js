@@ -175,14 +175,14 @@ checks.push(["deleted-row markup uses the short row copy",
 const ext = jobs["external w/ url + app"];
 checks.push(["golden: detail ids",
   jobActionIds(ext, "detail").join() ===
-    "score,tailor,assist,view-application,mark-applied,embellishments,delete"]);
+    "edit-job,score,tailor,assist,view-application,mark-applied,embellishments,delete"]);
 checks.push(["golden: external apply_type still suppresses Open Job URL",
   !jobActionIds(ext, "detail").includes("open-url")
     && jobActionIds({ ...ext, apply_type: undefined }, "detail").includes("open-url")]);
 checks.push(["golden: list row ids", jobActionIds(ext, "list-row").join() === "assist"]);
-checks.push(["golden: review row ids", jobActionIds(ext, "review-row").join() === "tailor,score,pass"]);
-checks.push(["golden: review detail ids", jobActionIds(ext, "review-detail").join() === "assist"]);
-checks.push(["golden: kanban menu ids", jobActionIds(ext, "kanban-menu").join() === "delete"]);
+checks.push(["golden: review row ids", jobActionIds(ext, "review-row").join() === "edit-job,tailor,score,pass"]);
+checks.push(["golden: review detail ids", jobActionIds(ext, "review-detail").join() === "edit-job,assist"]);
+checks.push(["golden: kanban menu ids", jobActionIds(ext, "kanban-menu").join() === "edit-job,delete"]);
 
 const detailHtml = renderJobActions(ext, "detail");
 for (const [name, needle] of [
@@ -208,8 +208,8 @@ checks.push(["golden markup: Open Job URL keeps the open-url hooks",
     return html.includes(`<a class="btn btn-secondary btn-sm" href="https://jobs.test/8" target="_blank" rel="noopener" data-jobsmith-open-url data-jobsmith-job-id="j8">Open Job URL</a>`);
   })()]);
 checks.push(["golden markup: kanban menu item keeps its menuitem shape",
-  renderJobActions({ id: "j1" }, "kanban-menu") ===
-    `<button role="menuitem" class="kmenu-danger" onclick="_runCardMenuDelete('j1')">Delete posting</button>`]);
+  renderJobActions({ id: "j1" }, "kanban-menu").includes(
+    `<button role="menuitem" class="kmenu-danger" onclick="_runCardMenuDelete('j1')">Delete posting</button>`)]);
 checks.push(["golden markup: review row keeps btn-xs + ghost Pass",
   (() => {
     const html = renderJobActions(ext, "review-row");
