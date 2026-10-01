@@ -526,6 +526,22 @@ const DECK_TRANSITIONS = [
             body: JSON.stringify({ status: 'passed' }),
         }),
     },
+    ...[
+        ['applied', 'interviewing', 'interview'],
+        ['applied', 'offer', 'offer'],
+        ['interviewing', 'applied', 'awaiting'],
+        ['interviewing', 'offer', 'offer'],
+        ['offer', 'applied', 'awaiting'],
+        ['offer', 'interviewing', 'interview'],
+        ['closed', 'applied', 'awaiting'],
+    ].map(([from, to, outcome]) => ({
+        from, to, label: `tracks ${stageLabel(to).toLowerCase()}`,
+        toast: `Moved to ${stageLabel(to)}`,
+        run: id => api(`/api/applications/${id}/outcome`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outcome }),
+        }),
+    })),
 ];
 
 function findDeckTransition(from, to) {
@@ -599,7 +615,7 @@ function enterReview() {
     // loaders below publish the counts; in table view this fetches them.
     refreshFunnelCounts();
     if (board) renderBoard();
-    else switchReviewView('shortlisted');
+    else switchReviewView('submitted');
 }
 
 // core.js live refresh delegates here when the board is showing.
@@ -646,9 +662,11 @@ function _appKcardHtml(app, colKey) {
     let tag = '';
     if (colKey === 'pending') {
         tag = `<span class="oktag">résumé ready</span>`;
-    } else if (colKey === 'applied') {
+    } else if (['applied', 'interviewing', 'offer', 'closed'].includes(colKey)) {
         const when = app.applied_at || app.created_at;
-        tag = `<span class="kage">${escapeHtml(timeAgo(when) || '')}</span>`;
+        const outcome = app.outcome || 'awaiting';
+        const label = (OUTCOME_OPTIONS.find(([key]) => key === outcome) || [outcome, outcome])[1];
+        tag = `<span class="kage">${escapeHtml(label)} · ${escapeHtml(timeAgo(when) || '')}</span>`;
     } else if (colKey === 'needs-attention') {
         const reason = app.error_message || app.state || app.status || 'Needs attention';
         tag = `<span class="duetag" title="${escapeHtml(reason)}">&#9888; ${escapeHtml(String(reason).substring(0, 60))}</span>`;
@@ -698,6 +716,8 @@ function _applyBoardFilter() {
         host.classList.toggle('board-filtered', !!_boardFilterCol);
         host.querySelectorAll('.kcol').forEach((col) => {
             const on = !_boardFilterCol || col.dataset.col === _boardFilterCol;
+            const group = col.closest('details');
+            if (_boardFilterCol && on && group) group.open = true;
             col.classList.toggle('kcol-dim', !on);
             col.classList.toggle('kcol-focus', !!_boardFilterCol && on);
         });
@@ -720,34 +740,37 @@ function _applyBoardFilter() {
 
 let _boardLoadPromise = null;
 
+function _boardColumnHtml(c) {
+    return `<div class="kcol" data-col="${c.key}" title="${escapeHtml(c.desc)}">
+        <div class="kcolhead"><span class="cdot" style="background:${c.dot}"></span>
+            <b>${escapeHtml(c.label)}</b><span class="kct num" id="kct-${c.key}">·</span></div>
+        <div class="kbatch" id="kbatch-${c.key}" hidden><i></i></div>
+        <div class="kcards" id="kcards-${c.key}"><p class="placeholder">Loading…</p></div>
+    </div>`;
+}
+
 function renderBoard() {
     if (_boardLoadPromise) return _boardLoadPromise;
     const host = document.getElementById('pipeline-board');
     if (!host) return Promise.resolve();
-
-    if (!host.querySelector('.kcol')) {
-        host.innerHTML = DECK_COLUMNS.map((c) => `
-            <div class="kcol" data-col="${c.key}" title="${escapeHtml(c.desc)}">
-                <div class="kcolhead">
-                    <span class="cdot" style="background:${c.dot}"></span>
-                    <b>${escapeHtml(c.label)}</b>
-                    <span class="kct num" id="kct-${c.key}">·</span>
-                </div>
-                <div class="kbatch" id="kbatch-${c.key}" hidden><i></i></div>
-                <div class="kcards" id="kcards-${c.key}"><p class="placeholder">Loading…</p></div>
-            </div>`).join('')
+    // Keep group expansion and card interactions intact on subsequent loads.
+    if (!host.querySelector('.pipeline-primary')) {
+        const columns = group => DECK_COLUMNS.filter(c => c.group === group).map(_boardColumnHtml).join('');
+        const auxiliary = (group, label, extra = '') => `<details class="pipeline-aux" data-group="${group}">
+            <summary>${label} <span class="num" id="kgroup-${group}">0</span></summary>
+            <div class="pipeline-columns">${columns(group)}</div>${extra}</details>`;
+        host.innerHTML = `<div class="pipeline-columns pipeline-primary" aria-label="Hiring progress">${columns('primary')}</div>`
+            + auxiliary('preparation', 'Prepare applications')
+            + auxiliary('issues', 'Submission issues', `<button class="btn btn-secondary btn-sm" onclick="deckShowApplication('applying')">View in-progress submissions</button>`)
+            + auxiliary('history', 'Closed applications')
             + `<div class="kpasszone" id="kpasszone"><span>Drop here to <b>${escapeHtml(stageLabel('pass'))}</b></span></div>`
-            + `<div class="kboard-foot">Drag: ${escapeHtml(_boardLegendText())}</div>`;
-
+            + `<div class="kboard-foot">Drag cards or use their ⋯ menu to update a stage.</div>`;
         _wireBoardDnD(host);
         _applyBoardFilter();
     }
-
     _boardLoadPromise = Promise.all([
-        loadColShortlisted(),
-        loadColTailoring(),
-        loadColReady(),
-        loadColApplied(),
+        loadColShortlisted(), loadColTailoring(), loadColReady(),
+        ...['applied', 'interviewing', 'offer', 'closed'].map(loadColPostApply),
         loadColAttention(),
     ]).catch(() => {}).finally(() => { _boardLoadPromise = null; });
     return _boardLoadPromise;
@@ -805,13 +828,16 @@ async function loadColReady() {
     } catch (e) { _renderCol('pending', '<p class="placeholder kcol-empty">Failed to load</p>', '·'); }
 }
 
-async function loadColApplied() {
+async function loadColPostApply(stage) {
     try {
-        const apps = await api('/api/applications/submitted?limit=50');
+        const apps = await api(`/api/applications/submitted?stage=${stage}&limit=200`);
         const list = apps || [];
-        _renderCol('applied', list.map((a) => _appKcardHtml(a, 'applied')).join(''), list.length);
-    } catch (e) { _renderCol('applied', '<p class="placeholder kcol-empty">Failed to load</p>', '·'); }
+        _renderCol(stage, list.map(app => _appKcardHtml(app, stage)).join(''), list.length);
+    } catch (e) { _renderCol(stage, '<p class="placeholder kcol-empty">Failed to load</p>', '·'); }
 }
+
+// Compatibility entry point for other scripts and existing callers.
+async function loadColApplied() { return loadColPostApply('applied'); }
 
 async function loadColAttention() {
     try {
@@ -843,7 +869,7 @@ function boardOpenApp(colKey, appId, jobId) {
     if (jobId) { openJobModal(jobId); return; }
     // Fallback (no job id on the card): drill into the stage table behind the
     // board's back bar.
-    const view = { pending: 'pending', applied: 'submitted', 'needs-attention': 'in-progress' }[colKey] || 'pending';
+    const view = { pending: 'pending', applied: 'submitted', interviewing: 'interviewing', offer: 'offer', closed: 'closed', 'needs-attention': 'in-progress' }[colKey] || 'pending';
     const rev = document.getElementById('review');
     if (rev) rev.classList.add('review-detail');
     switchReviewView(view);
@@ -851,9 +877,9 @@ function boardOpenApp(colKey, appId, jobId) {
 
 // "View Application" inside the peek modal (via viewApplicationFor, jobs.js):
 // land on the matching Pipeline stage table behind the board's back bar.
-function deckShowApplication(appStatus) {
+function deckShowApplication(appStatus, outcome) {
     closeJobModal();
-    const view = (appStatus === 'applied') ? 'submitted'
+    const view = (appStatus === 'applied') ? pipelineStageForOutcome(outcome).tab
         : (appStatus === 'pending_review' || appStatus === 'paused') ? 'pending'
         : 'in-progress';
     const go = () => {
@@ -979,6 +1005,9 @@ function boardCardMenu(ev, colKey, id, jobId) {
     // Job-level entries come from the actions registry (job-actions.js); the
     // moves above stay here because they are column-driven, not job-driven.
     + (jobId ? renderJobActions({ id: jobId }, 'kanban-menu') : '')
+    + (['applied', 'interviewing', 'offer'].includes(colKey) ? `
+        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','rejected')">Mark rejected</button>
+        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','withdrawn')">Withdraw application</button>` : '')
     + (!opts.length && !jobId ? `<button role="menuitem" disabled>No actions available</button>` : '');
     document.body.appendChild(menu);
     const btn = ev.currentTarget || ev.target;
@@ -986,6 +1015,11 @@ function boardCardMenu(ev, colKey, id, jobId) {
     menu.style.top = `${Math.round(r.bottom + 4)}px`;
     menu.style.left = `${Math.round(Math.min(r.left, window.innerWidth - 210))}px`;
     setTimeout(() => document.addEventListener('click', _closeCardMenuOnce, true), 0);
+}
+
+async function _runCardOutcome(appId, outcome) {
+    _closeCardMenu();
+    await updateApplicationOutcome(appId, outcome);
 }
 
 function _transitionMenuLabel(t) {
@@ -1026,7 +1060,7 @@ async function runDeckDrop(from, to, id) {
         await t.run(id);
         toast(t.toast || 'Moved', 'success');
         if (typeof refreshFunnelCounts === 'function') refreshFunnelCounts();
-        renderBoard();
+        await renderBoard();
         return true;
     } catch (e) {
         toast('Move failed', 'error');

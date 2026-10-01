@@ -261,7 +261,7 @@ async function refreshActiveView() {
                 if (typeof isBoardModeActive === 'function' && isBoardModeActive()) { await refreshBoardLive(); break; }
                 if (currentReviewView === 'shortlisted') await loadShortlisted();
                 else if (currentReviewView === 'pending') await loadReviewQueue();
-                else if (currentReviewView === 'submitted') await loadSubmittedApplications();
+                else if (['submitted', 'interviewing', 'offer', 'closed'].includes(currentReviewView)) await loadSubmittedApplications();
                 else if (currentReviewView === 'in-progress') await loadInProgress();
                 else await loadFailedApplications();
                 break;
