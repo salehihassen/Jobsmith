@@ -2497,6 +2497,8 @@ main:has(> #review.tab-content.active.view-board) {
 .form-group input[type="email"],
 .form-group input[type="password"],
 .form-group input[type="number"],
+.form-group input[type="url"],
+.form-group input[type="date"],
 .form-group textarea,
 .form-group select {
     width: 100%;
