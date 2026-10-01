@@ -655,7 +655,7 @@ async def get_jobs(
         # Use a subquery to get only the most recent application per job
         # This prevents duplicate rows when a job has multiple applications
         app_join = """LEFT JOIN (
-                SELECT job_id, id, status, applied_at,
+                SELECT job_id, id, status, outcome, applied_at,
                        ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY applied_at DESC, created_at DESC) as rn
                 FROM applications
             ) a ON a.job_id = j.id AND a.rn = 1"""
