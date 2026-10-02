@@ -655,7 +655,7 @@ async def get_jobs(
         # Use a subquery to get only the most recent application per job
         # This prevents duplicate rows when a job has multiple applications
         app_join = """LEFT JOIN (
-                SELECT job_id, id, status, applied_at,
+                SELECT job_id, id, status, outcome, applied_at,
                        ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY applied_at DESC, created_at DESC) as rn
                 FROM applications
             ) a ON a.job_id = j.id AND a.rn = 1"""
@@ -667,7 +667,7 @@ async def get_jobs(
 
         # Fetch page
         cursor = await db.execute(
-            f"""SELECT j.*, a.id as app_id, a.status as app_status, a.applied_at
+            f"""SELECT j.*, a.id as app_id, a.status as app_status, a.outcome as app_outcome, a.applied_at
                 FROM jobs j {app_join}
                 {where}
                 {order_clause}
@@ -1757,8 +1757,31 @@ async def get_pending_reviews(limit: int = 20) -> list[dict]:
         await db.close()
 
 
-async def get_submitted_applications(limit: int = 50) -> list[dict]:
-    """Get applications that were successfully submitted (applied only)."""
+POST_APPLY_STAGES = {
+    "applied": ("awaiting", "no_response"),
+    "interviewing": ("screening", "interview"),
+    "offer": ("offer",),
+    "closed": ("rejected", "withdrawn"),
+}
+
+
+async def get_submitted_applications(limit: int = 50, stage: Optional[str] = None) -> list[dict]:
+    """Get submitted applications, optionally filtered by their hiring stage.
+
+    Submission status remains 'applied' throughout interviewing and offers.
+    Filtering before LIMIT keeps each column independent of the other stages.
+    Omitting stage preserves the full submitted-history API used by iOS.
+    """
+    if stage is not None and stage not in POST_APPLY_STAGES:
+        raise ValueError("Unknown post-application stage")
+    conditions = ""
+    params: list = []
+    if stage is not None:
+        outcomes = POST_APPLY_STAGES[stage]
+        placeholders = ",".join("?" for _ in outcomes)
+        conditions = f" AND COALESCE(a.outcome, 'awaiting') IN ({placeholders})"
+        params.extend(outcomes)
+    params.append(limit)
     db = await _get_db()
     try:
         cursor = await db.execute(
@@ -1767,10 +1790,10 @@ async def get_submitted_applications(limit: int = 50) -> list[dict]:
                FROM applications a
                JOIN jobs j ON j.id = a.job_id
                WHERE a.status = 'applied'
-                 AND j.status != 'deleted'
+                 AND j.status != 'deleted'""" + conditions + """
                ORDER BY a.applied_at DESC, a.created_at DESC
                LIMIT ?""",
-            (limit,),
+            params,
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]

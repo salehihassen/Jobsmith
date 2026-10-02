@@ -116,9 +116,9 @@ checks.push(["resetFilter clears its own input", doc.getElementById("filter-remo
 checks.push(["resetFilter triggers a reload", loadCalls === 1]);
 
 // ---- Funnel rendering (segment per view, counts, exactly one active) ----
-window.setPipelineCount("shortlisted", 4); // renders too
+window.setPipelineCount("applied", 4); // renders too
 const funnelHtml = doc.getElementById("pipeline-funnel").innerHTML;
-checks.push(["funnel renders one segment per view (5)", (funnelHtml.match(/class="fseg/g) || []).length === 5]);
+checks.push(["funnel renders the three hiring stages", (funnelHtml.match(/class="fseg/g) || []).length === 3]);
 checks.push(["funnel segment shows its count", funnelHtml.includes(">4<")]);
 checks.push(["zero-count segment gets .empty", funnelHtml.includes(" empty")]);
 checks.push(["exactly one active segment", (funnelHtml.match(/aria-selected="true"/g) || []).length === 1]);

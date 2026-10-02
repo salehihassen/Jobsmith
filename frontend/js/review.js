@@ -3,7 +3,7 @@
 // handlers in index.html and generated HTML rely on these names).
 
 // ---- Review Queue ----
-let currentReviewView = 'pending';
+let currentReviewView = 'submitted';
 
 // B2: these two queues are downstream of the AI (nothing gets tailored while the
 // AI server is down), so their empty states get the AI hint — and ONLY the AI
@@ -22,6 +22,9 @@ function switchReviewView(view) {
         shortlisted: ['review-tab-shortlisted', 'review-shortlisted-view'],
         pending: ['review-tab-pending', 'review-pending-view'],
         submitted: ['review-tab-submitted', 'review-submitted-view'],
+        interviewing: ['review-tab-interviewing', 'review-submitted-view'],
+        offer: ['review-tab-offer', 'review-submitted-view'],
+        closed: ['review-tab-closed', 'review-submitted-view'],
         failed: ['review-tab-failed', 'review-failed-view'],
         'in-progress': ['review-tab-in-progress', 'review-in-progress-view'],
     };
@@ -29,12 +32,13 @@ function switchReviewView(view) {
         const tab = document.getElementById(tabId);
         if (tab) tab.classList.toggle('active', view === name);
         const pane = document.getElementById(paneId);
-        if (pane) pane.style.display = view === name ? '' : 'none';
+        if (pane) pane.style.display = (paneId === 'review-submitted-view'
+            ? ['submitted', 'interviewing', 'offer', 'closed'].includes(view) : view === name) ? '' : 'none';
     }
     renderFunnel(); // cheap: sync the active segment (no fetch on tab switches)
     if (view === 'shortlisted') loadShortlisted();
     else if (view === 'pending') loadReviewQueue();
-    else if (view === 'submitted') loadSubmittedApplications();
+    else if (['submitted', 'interviewing', 'offer', 'closed'].includes(view)) loadSubmittedApplications();
     else if (view === 'in-progress') loadInProgress();
     else loadFailedApplications();
 }
@@ -82,6 +86,13 @@ function setPipelineCount(key, n) {
     if (stage.board) {
         const ct = document.getElementById(`kct-${stage.key}`);
         if (ct) ct.textContent = _pipelineCounts[stage.key];
+    }
+    for (const group of ['preparation', 'issues', 'history']) {
+        const badge = document.getElementById(`kgroup-${group}`);
+        if (!badge) continue;
+        const total = group === 'issues' ? pipelineCount('failed') + pipelineCount('in-progress')
+            : pipelineStages().filter(s => s.group === group && s.board).reduce((sum, s) => sum + pipelineCount(s.key), 0);
+        badge.textContent = total;
     }
     renderFunnel();
 }
@@ -172,16 +183,20 @@ async function refreshFunnelCounts() {
     renderFunnel(); // paint immediately with whatever we have
     if (typeof isBoardModeActive === 'function' && isBoardModeActive()) return;
     const grab = (p) => p.catch(() => null);
-    const [s, p, su, f, ip] = await Promise.all([
+    const [s, p, su, f, ip, interviews, offers, closed] = await Promise.all([
         grab(api('/api/jobs?status=shortlisted&limit=1').then(d => (d && typeof d.total === 'number') ? d.total : ((d && d.jobs) || []).length)),
         grab(api('/api/applications/pending?limit=100').then(a => (a || []).length)),
-        grab(api('/api/applications/submitted?limit=100').then(a => (a || []).length)),
+        grab(api('/api/applications/submitted?stage=applied&limit=200').then(a => (a || []).length)),
         grab(api('/api/applications/failed?limit=100').then(a => (a || []).length)),
         grab(api('/api/applications/in-progress').then(d => ({
             total: ((d && d.in_progress) || []).length + ((d && d.needs_attention) || []).length,
             attention: ((d && d.needs_attention) || []).length,
         }))),
+        ...['interviewing', 'offer', 'closed'].map(stage => grab(api(`/api/applications/submitted?stage=${stage}&limit=200`).then(a => (a || []).length))),
     ]);
+    if (interviews !== null) setPipelineCount('interviewing', interviews);
+    if (offers !== null) setPipelineCount('offer', offers);
+    if (closed !== null) setPipelineCount('closed', closed);
     if (s !== null) setPipelineCount('shortlisted', s);
     if (p !== null) setPipelineCount('pending', p);
     if (su !== null) setPipelineCount('applied', su);
@@ -273,10 +288,15 @@ async function loadReviewQueue() {
     }
 }
 
+function submittedStage() {
+    return { submitted: 'applied', interviewing: 'interviewing', offer: 'offer', closed: 'closed' }[currentReviewView] || 'applied';
+}
+
 async function loadSubmittedApplications() {
+    const stage = submittedStage();
     try {
-        const apps = await api('/api/applications/submitted?limit=50');
-        setPipelineCount('applied', (apps || []).length);
+        const apps = await api(`/api/applications/submitted?stage=${stage}&limit=200`);
+        setPipelineCount(stage, (apps || []).length);
         renderPipelineData('submitted-list', apps, renderSubmittedApplications);
     } catch (e) {
         pipelineLoadError('submitted-list', 'Failed to load submitted applications.', loadSubmittedApplications);
@@ -636,13 +656,14 @@ async function updateApplicationOutcome(appId, outcome) {
     } catch (e) {
         toast('Failed to update outcome', 'error');
     }
-    loadSubmittedApplications();
+    if (typeof isBoardModeActive === 'function' && isBoardModeActive()) await renderBoard();
+    else { await loadSubmittedApplications(); refreshFunnelCounts(); }
 }
 
 function renderSubmittedApplications(apps) {
     const container = document.getElementById('submitted-list');
     if (apps.length === 0) {
-        container.innerHTML = '<p class="placeholder">No submitted applications yet.</p>';
+        container.innerHTML = '<p class="placeholder">No applications in this stage yet.</p>';
         return;
     }
 

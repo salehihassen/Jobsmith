@@ -454,7 +454,7 @@ function viewApplicationFor(jobId) {
     const status = job && (job.app_status || (job.application && job.application.status));
     if (typeof getPipelineView === 'function' && getPipelineView() === 'board'
         && typeof deckShowApplication === 'function') {
-        deckShowApplication(status);
+        deckShowApplication(status, job && ((job.application && job.application.outcome) || job.app_outcome));
         return;
     }
     location.hash = 'review';
