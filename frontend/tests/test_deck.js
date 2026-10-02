@@ -409,10 +409,10 @@ async function assertDrop(from, to, id, verify) {
   const stageLabels = window.pipelineStages().map((s) => s.label);
   checks.push(["board columns are the board stages, in order",
     JSON.stringify(window.boardStages().map((s) => s.key))
-      === JSON.stringify(["applied", "interviewing", "offer", "shortlisted", "tailoring", "pending", "needs-attention", "closed"])]);
-  checks.push(["funnel stages are the three hiring stages, in order",
+      === JSON.stringify(["shortlisted", "tailoring", "pending", "applied", "interviewing", "offer", "needs-attention", "closed"])]);
+  checks.push(["funnel keeps preparation before the three hiring stages",
     JSON.stringify(window.funnelStages().map((s) => s.key))
-      === JSON.stringify(["applied", "interviewing", "offer"])]);
+      === JSON.stringify(["shortlisted", "pending", "applied", "interviewing", "offer"])]);
   checks.push(["stageLabel resolves a column key", window.stageLabel("pending") === "Ready to Review"]);
   checks.push(["stageLabel keeps a word for the Pass verdict", window.stageLabel("pass") === "Pass"]);
   checks.push(["classic tab name maps back to a stage key", window.stageKeyForTab("submitted") === "applied"]);
@@ -429,7 +429,7 @@ async function assertDrop(from, to, id, verify) {
   checks.push(["funnel segments carry a stage tooltip",
     window.funnelStages().every((s) => funnelHtml.includes(s.desc.slice(0, 24)))]);
   checks.push(["funnel segments are focusable buttons",
-    doc.querySelectorAll("#pipeline-funnel button.fseg").length === 3]);
+    doc.querySelectorAll("#pipeline-funnel button.fseg").length === 5]);
   window.renderReviewTabs();
   const tabHtml = doc.getElementById("review-tab-bar").innerHTML;
   checks.push(["stage tabs render the constant's labels",

@@ -7,8 +7,8 @@
 //
 // Loaded before review.js and deck.js (classic script, shared global scope).
 // The list is ordered by how work actually flows:
-//   Applied → Interviewing → Offer. Preparation, submission issues and
-//   closed history stay available in separate expandable sections.
+//   Shortlisted → Tailoring → Ready to Review → Applied → Interviewing → Offer.
+//   Submission issues and closed history stay in expandable sections.
 //
 // Each stage carries:
 //   key    canonical id, also the key in the shared count store
@@ -21,6 +21,24 @@
 //   tab    the classic stage-table view name (currentReviewView value), if any
 //   dot    column dot colour   seg  funnel segment colour class
 const PIPELINE_STAGES = [
+    {
+        key: 'shortlisted', label: 'Shortlisted', group: 'primary',
+        desc: 'Jobs you kept while scouting the Inbox — no application exists yet.',
+        funnel: true, board: true, col: 'shortlisted', tab: 'shortlisted',
+        dot: 'var(--steel)', seg: 'fseg-steel',
+    },
+    {
+        key: 'tailoring', label: 'Tailoring', group: 'primary',
+        desc: 'The AI is writing the résumé and cover letter for these.',
+        funnel: false, board: true, col: 'tailoring', tab: null,
+        dot: 'var(--accent-yellow)', seg: 'fseg-amber',
+    },
+    {
+        key: 'pending', label: 'Ready to Review', group: 'primary',
+        desc: 'Tailored applications waiting for your approval before they go out.',
+        funnel: true, board: true, col: 'pending', tab: 'pending',
+        dot: 'var(--accent-ember)', seg: 'fseg-ember',
+    },
     {
         key: 'applied', label: 'Applied',
         desc: 'Submitted applications waiting for an employer response.',
@@ -43,24 +61,6 @@ const PIPELINE_STAGES = [
         dot: 'var(--accent-green)', seg: 'fseg-green',
     },
     {
-        key: 'shortlisted', label: 'Shortlisted', group: 'preparation',
-        desc: 'Jobs you kept while scouting the Inbox — no application exists yet.',
-        funnel: false, board: true, col: 'shortlisted', tab: 'shortlisted',
-        dot: 'var(--steel)', seg: 'fseg-steel',
-    },
-    {
-        key: 'tailoring', label: 'Tailoring', group: 'preparation',
-        desc: 'The AI is writing the résumé and cover letter for these.',
-        funnel: false, board: true, col: 'tailoring', tab: null,
-        dot: 'var(--accent-yellow)', seg: 'fseg-amber',
-    },
-    {
-        key: 'pending', label: 'Ready to Review', group: 'preparation',
-        desc: 'Tailored applications waiting for your approval before they go out.',
-        funnel: false, board: true, col: 'pending', tab: 'pending',
-        dot: 'var(--accent-ember)', seg: 'fseg-ember',
-    },
-    {
         key: 'failed', label: 'Failed', group: 'issues',
         desc: 'Submissions that errored out — retry them or apply manually.',
         funnel: false, board: false, col: 'needs-attention', tab: 'failed',
@@ -79,8 +79,8 @@ const PIPELINE_STAGES = [
         dot: 'var(--accent-red)', seg: 'fseg-red',
     },
     {
-        key: 'closed', label: 'Closed applications', group: 'history',
-        desc: 'Rejected and withdrawn applications kept for reference.',
+        key: 'closed', label: 'Rejected / Turned Down', group: 'history',
+        desc: 'Applications rejected by the employer or turned down or withdrawn by you.',
         outcomes: ['rejected', 'withdrawn'],
         funnel: false, board: true, col: 'closed', tab: 'closed',
         dot: 'var(--text-muted)', seg: 'fseg-steel',
