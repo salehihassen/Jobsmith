@@ -87,7 +87,7 @@ function setPipelineCount(key, n) {
         const ct = document.getElementById(`kct-${stage.key}`);
         if (ct) ct.textContent = _pipelineCounts[stage.key];
     }
-    for (const group of ['preparation', 'issues', 'history']) {
+    for (const group of ['issues', 'history']) {
         const badge = document.getElementById(`kgroup-${group}`);
         if (!badge) continue;
         const total = group === 'issues' ? pipelineCount('failed') + pipelineCount('in-progress')

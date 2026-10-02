@@ -31,7 +31,11 @@ w.api = async (url, options) => {
         const stage = parsed.searchParams.get('stage');
         return apps.filter(app => !stage || w.pipelineStageForOutcome(app.outcome).key === stage).map(app => ({ ...app }));
     }
-    if (parsed.pathname === '/api/jobs') return { jobs: [], total: 0 };
+    if (parsed.pathname === '/api/jobs') {
+        const jobs = parsed.searchParams.get('status') === 'shortlisted'
+            ? [{ id: 'j-to-apply', title: 'Role to apply for', company: 'Acme' }] : [];
+        return { jobs, total: jobs.length };
+    }
     if (parsed.pathname.endsWith('in-progress')) return { in_progress: [], needs_attention: [] };
     if (parsed.pathname.endsWith('/status')) return {};
     return [];
@@ -41,8 +45,12 @@ w.api = async (url, options) => {
     await w.renderBoard();
     const doc = w.document;
     assert.deepEqual([...doc.querySelectorAll('.pipeline-primary > .kcol')].map(col => col.dataset.col),
-        ['applied', 'interviewing', 'offer']);
-    for (const group of ['preparation', 'issues', 'history']) {
+        ['shortlisted', 'tailoring', 'pending', 'applied', 'interviewing', 'offer']);
+    assert.equal(doc.querySelector('#kcards-shortlisted .kt').textContent, 'Role to apply for');
+    assert.equal(doc.querySelector('#kcards-shortlisted').closest('details'), null,
+        'roles to apply for stay visible in the main pipeline');
+    assert.equal(doc.querySelector('details[data-group="preparation"]'), null);
+    for (const group of ['issues', 'history']) {
         assert.equal(doc.querySelector(`details[data-group="${group}"]`).open, false);
     }
     assert.equal(doc.querySelectorAll('#kcards-applied .kcard').length, 2);
@@ -50,11 +58,11 @@ w.api = async (url, options) => {
     assert.equal(doc.querySelectorAll('#kcards-offer .kcard').length, 1);
     assert.equal(doc.querySelectorAll('#kcards-closed .kcard').length, 2);
     assert.equal(doc.getElementById('kgroup-history').textContent, '2');
-    const prep = doc.querySelector('details[data-group="preparation"]');
-    prep.open = true;
+    const history = doc.querySelector('details[data-group="history"]');
+    history.open = true;
     await w.renderBoard();
-    assert.equal(prep, doc.querySelector('details[data-group="preparation"]'));
-    assert.equal(prep.open, true, 'refresh preserves expanded groups');
+    assert.equal(history, doc.querySelector('details[data-group="history"]'));
+    assert.equal(history.open, true, 'refresh preserves expanded history');
 
     assert.equal(await w.runDeckDrop('applied', 'interviewing', 'a-awaiting'), true);
     assert.equal(writes[0].url, '/api/applications/a-awaiting/outcome');
