@@ -16,8 +16,9 @@ independent so its upstream PR contains only that change.
 | `fix/manual-applied-pipeline` | Make manually applied jobs appear in Applied, with regression tests. Prepared from an older upstream revision. | [Open comparison](https://github.com/TheDevRo/Jobsmith/compare/main...salehihassen:Jobsmith:fix/manual-applied-pipeline?expand=1) |
 | `fix/pipeline-live-refresh` | Keep pipeline content stable while polling; preserve unchanged cards, focus, scroll, and selected documents. | [Open PR form](https://github.com/TheDevRo/Jobsmith/compare/main...salehihassen:Jobsmith:fix/pipeline-live-refresh?expand=1) |
 | `feat/edit-job-details` | Edit posting details through the web UI while retaining identity, pipeline stage, and application documents. | [Open PR form](https://github.com/TheDevRo/Jobsmith/compare/main...salehihassen:Jobsmith:feat/edit-job-details?expand=1) |
+| `feat/application-progress-pipeline` | Make Applied → Interviewing → Offer the primary board, with preparation, submission issues, and closed history in expandable sections. Preserve existing outcome history and application records. | [Open PR form](https://github.com/TheDevRo/Jobsmith/compare/main...salehihassen:Jobsmith:feat/application-progress-pipeline?expand=1) |
 
-The latter two branches start at upstream `14c7046`. Their implementation and
+The last three branches start at upstream `14c7046`. Their implementation and
 tests are also merged into `saleh-changes`. As of October 1, 2026, the GitHub
 connector rejected PR creation with HTTP 403, so these are pushed branches,
 not opened pull requests.
@@ -58,3 +59,7 @@ Before an update, take an online SQLite backup and copy the configuration and
 Compose file. The October 1 update saved its database and configuration under
 `/opt/jobsmith/data/backups/pre-pipeline-editor-20261001/`, and its Compose file
 at `/opt/jobsmith/compose-pre-pipeline-editor-20261001.yaml`.
+
+The hiring-pipeline update also backed up the database and configuration in
+`/opt/jobsmith/data/backups/pre-hiring-pipeline-20261001/` and Compose in
+`/opt/jobsmith/compose-pre-hiring-pipeline-20261001.yaml`.
