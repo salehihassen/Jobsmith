@@ -759,10 +759,9 @@ function renderBoard() {
         const auxiliary = (group, label, extra = '') => `<details class="pipeline-aux" data-group="${group}">
             <summary>${label} <span class="num" id="kgroup-${group}">0</span></summary>
             <div class="pipeline-columns">${columns(group)}</div>${extra}</details>`;
-        host.innerHTML = `<div class="pipeline-columns pipeline-primary" aria-label="Hiring progress">${columns('primary')}</div>`
-            + auxiliary('preparation', 'Prepare applications')
+        host.innerHTML = `<div class="pipeline-columns pipeline-primary" aria-label="Application pipeline">${columns('primary')}</div>`
             + auxiliary('issues', 'Submission issues', `<button class="btn btn-secondary btn-sm" onclick="deckShowApplication('applying')">View in-progress submissions</button>`)
-            + auxiliary('history', 'Closed applications')
+            + auxiliary('history', 'Rejected / Turned Down')
             + `<div class="kpasszone" id="kpasszone"><span>Drop here to <b>${escapeHtml(stageLabel('pass'))}</b></span></div>`
             + `<div class="kboard-foot">Drag cards or use their ⋯ menu to update a stage.</div>`;
         _wireBoardDnD(host);
@@ -1007,7 +1006,7 @@ function boardCardMenu(ev, colKey, id, jobId) {
     + (jobId ? renderJobActions({ id: jobId }, 'kanban-menu') : '')
     + (['applied', 'interviewing', 'offer'].includes(colKey) ? `
         <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','rejected')">Mark rejected</button>
-        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','withdrawn')">Withdraw application</button>` : '')
+        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','withdrawn')">Turn down / withdraw</button>` : '')
     + (!opts.length && !jobId ? `<button role="menuitem" disabled>No actions available</button>` : '');
     document.body.appendChild(menu);
     const btn = ev.currentTarget || ev.target;
