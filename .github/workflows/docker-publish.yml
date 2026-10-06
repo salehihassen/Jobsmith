@@ -1,11 +1,9 @@
 name: Publish Docker image
 
-# Publishing is deliberate, not automatic: it runs only when you push a version
-# tag (git tag v1.0.0 && git push --tags) or trigger it by hand from the Actions
-# tab. This keeps images off GHCR until you actually intend to release one.
+# Publish the fork's image on every push to saleh or a manual run.
 on:
   push:
-    tags: ["v*"]
+    branches: [saleh]
   workflow_dispatch:
 
 permissions:
@@ -31,11 +29,10 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/thedevro/jobsmith
+          images: ghcr.io/salehihassen/jobsmith
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=sha
+            type=raw,value=latest
+            type=sha,prefix=sha-
 
       - uses: docker/build-push-action@v7
         with:
