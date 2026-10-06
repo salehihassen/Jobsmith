@@ -3,7 +3,7 @@ name: Publish Docker image
 # Publish the fork's image on every push to saleh or a manual run.
 on:
   push:
-    branches: [saleh]
+    branches: [saleh-changes]
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/salehihassen/jobsmith
+          images: ghcr.io/${{ github.repository_owner }}/${{ github.repository}}
           tags: |
             type=raw,value=latest
             type=sha,prefix=sha-
