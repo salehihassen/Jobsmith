@@ -50,7 +50,8 @@ async def test_hiring_progress_preserves_identity_documents_and_history(tmp_path
     app = FastAPI()
     app.include_router(router)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        for outcome, stage in [("interview", "interviewing"), ("offer", "offer"), ("awaiting", "applied")]:
+        for outcome, stage in [("interview", "interviewing"), ("offer", "offer"), ("awaiting", "applied"),
+                               ("rejected", "closed"), ("awaiting", "applied")]:
             response = await client.patch(f"/api/applications/{app_id}/outcome", json={"outcome": outcome})
             assert response.status_code == 200
             rows = await db.get_submitted_applications(stage=stage)
@@ -61,7 +62,7 @@ async def test_hiring_progress_preserves_identity_documents_and_history(tmp_path
         listed = (await db.get_jobs())["jobs"]
         assert next(job for job in listed if job["id"] == job_id)["app_outcome"] == "awaiting"
         history = await db.get_application_events(app_id)
-        assert [event["to_outcome"] for event in history][-3:] == ["interview", "offer", "awaiting"]
+        assert [event["to_outcome"] for event in history][-5:] == ["interview", "offer", "awaiting", "rejected", "awaiting"]
         # Soft-deleted postings remain hidden from every hiring stage.
         await db.update_job_status(job_id, "deleted")
         assert await db.get_submitted_applications(stage="applied") == []

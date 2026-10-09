@@ -534,9 +534,12 @@ const DECK_TRANSITIONS = [
         ['offer', 'applied', 'awaiting'],
         ['offer', 'interviewing', 'interview'],
         ['closed', 'applied', 'awaiting'],
+        ['applied', 'closed', 'rejected'],
+        ['interviewing', 'closed', 'rejected'],
+        ['offer', 'closed', 'rejected'],
     ].map(([from, to, outcome]) => ({
-        from, to, label: `tracks ${stageLabel(to).toLowerCase()}`,
-        toast: `Moved to ${stageLabel(to)}`,
+        from, to, label: outcome === 'rejected' ? 'marks rejected' : `tracks ${stageLabel(to).toLowerCase()}`,
+        toast: outcome === 'rejected' ? 'Marked rejected' : `Moved to ${stageLabel(to)}`,
         run: id => api(`/api/applications/${id}/outcome`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ outcome }),
@@ -1005,7 +1008,6 @@ function boardCardMenu(ev, colKey, id, jobId) {
     // moves above stay here because they are column-driven, not job-driven.
     + (jobId ? renderJobActions({ id: jobId }, 'kanban-menu') : '')
     + (['applied', 'interviewing', 'offer'].includes(colKey) ? `
-        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','rejected')">Mark rejected</button>
         <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','withdrawn')">Turn down / withdraw</button>` : '')
     + (!opts.length && !jobId ? `<button role="menuitem" disabled>No actions available</button>` : '');
     document.body.appendChild(menu);
@@ -1022,6 +1024,7 @@ async function _runCardOutcome(appId, outcome) {
 }
 
 function _transitionMenuLabel(t) {
+    if (t.to === 'closed') return 'Mark rejected';
     return `Move to ${stageLabel(t.to)} — ${t.label}`;
 }
 
@@ -1100,6 +1103,8 @@ function _wireBoardDnD(host) {
         if (findDeckTransition(_boardDrag.from, target.to)) {
             e.preventDefault();                          // signals "droppable"
             target.el.classList.add('drop-active');
+            const group = target.el.closest('details');
+            if (group) group.open = true;
             _setDropLabel(target, _boardDrag.from);
         }
     });
@@ -1131,6 +1136,8 @@ function _dropTarget(node) {
     if (pass) return { el: pass, to: 'pass' };
     const col = node.closest('.kcol');
     if (col) return { el: col, to: col.dataset.col };
+    const history = node.closest('details[data-group="history"]');
+    if (history) return { el: history, to: 'closed' };
     return null;
 }
 

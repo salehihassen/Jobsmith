@@ -64,6 +64,35 @@ w.api = async (url, options) => {
     assert.equal(history, doc.querySelector('details[data-group="history"]'));
     assert.equal(history.open, true, 'refresh preserves expanded history');
 
+    // Exercise the delegated drag path against the closed-history column.
+    for (const [from, id] of [['applied', 'a-no_response'], ['interviewing', 'a-screening'], ['offer', 'a-offer']]) {
+        const card = doc.querySelector(`#kcards-${from} [data-id="${id}"]`);
+        history.open = false;
+        const target = history.querySelector('summary');
+        card.dispatchEvent(new w.Event('dragstart', { bubbles: true }));
+        const over = new w.Event('dragover', { bubbles: true, cancelable: true });
+        target.dispatchEvent(over);
+        assert(over.defaultPrevented, `${from} cards can be dropped into rejected history`);
+        assert.equal(history.open, true, 'dragging over collapsed history reveals the destination');
+        const before = writes.length;
+        target.dispatchEvent(new w.Event('drop', { bubbles: true, cancelable: true }));
+        card.dispatchEvent(new w.Event('dragend', { bubbles: true }));
+        await new Promise(resolve => setImmediate(resolve));
+        await w.renderBoard();
+        assert.equal(writes.length, before + 1, 'one drop makes exactly one write');
+        assert.equal(writes.at(-1).url, `/api/applications/${id}/outcome`);
+        assert.deepEqual(writes.at(-1).changes, { outcome: 'rejected' });
+        assert(doc.querySelector(`#kcards-closed [data-id="${id}"]`), 'rejected card appears in history');
+        assert(!doc.querySelector(`#kcards-${from} [data-id="${id}"]`));
+        assert.equal(apps.find(app => app.id === id).status, 'applied');
+    }
+    assert.equal(w.findDeckTransition('shortlisted', 'closed'), null, 'unsent jobs cannot acquire an employer rejection');
+    w.boardCardMenu({ currentTarget: doc.querySelector('#kcards-applied .kmenu-btn') }, 'applied', 'a-awaiting', 'j-awaiting');
+    assert.equal([...doc.querySelectorAll('#kmenu button')].filter(button => button.textContent === 'Mark rejected').length, 1,
+        'the card menu exposes one rejection action using the drag transition');
+    w._closeCardMenu();
+    writes.length = 0;
+
     assert.equal(await w.runDeckDrop('applied', 'interviewing', 'a-awaiting'), true);
     assert.equal(writes[0].url, '/api/applications/a-awaiting/outcome');
     assert.deepEqual(writes[0].changes, { outcome: 'interview' });
@@ -75,10 +104,11 @@ w.api = async (url, options) => {
     assert(writes.every(write => !('status' in write.changes)), 'hiring moves never overwrite submission status');
     await w._runCardOutcome('a-awaiting', 'rejected');
     assert(doc.querySelector('#kcards-closed [data-id="a-awaiting"]'));
-    assert.equal(doc.getElementById('kgroup-history').textContent, '3');
+    assert.equal(doc.getElementById('kgroup-history').textContent, '6');
     w.setBoardFilter('needs-attention', 'failed');
     assert.equal(doc.querySelector('details[data-group="issues"]').open, true);
 
+    await w._runCardOutcome('a-offer', 'offer');
     w._currentJobs['j-offer'] = { id: 'j-offer', app_status: 'applied', app_outcome: 'offer' };
     w.viewApplicationFor('j-offer');
     await new Promise(resolve => setImmediate(resolve));

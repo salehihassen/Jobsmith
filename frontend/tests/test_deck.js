@@ -112,9 +112,9 @@ checks.push(["paletteHighlight wraps the match in <em>", probe2.querySelectorAll
 checks.push(["paletteHighlight preserves the literal text", probe2.textContent === "<img src=x onerror=alert(1)>"]);
 
 // ===================================================================
-// 2. Allowed-transition map — exactly 5, each → the right endpoint/payload
+// 2. Allowed-transition map — each → the right endpoint/payload
 // ===================================================================
-checks.push(["there are exactly 12 allowed transitions", window.allDeckTransitions().length === 12]);
+checks.push(["there are exactly 15 allowed transitions", window.allDeckTransitions().length === 15]);
 
 async function assertDrop(from, to, id, verify) {
   calls.length = 0; confirmCount = 0;
