@@ -41,7 +41,9 @@
 
   function onWorkdayHost() {
     const host = (location.hostname || "").toLowerCase();
-    return WORKDAY_HOST_SUFFIXES.some((s) => host.endsWith(s));
+    return location.protocol === "https:" && WORKDAY_HOST_SUFFIXES.some(
+      (s) => host === s || host.endsWith("." + s)
+    );
   }
 
   function q(sel) {

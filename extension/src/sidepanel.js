@@ -454,13 +454,16 @@ async function doClearHighlights() {
 // the email + password from the backend and submits — the most painful part of
 // every Workday application. Nothing about the password is stored in the panel.
 
-const WORKDAY_HOST_SUFFIX = "myworkdayjobs.com";
+const WORKDAY_HOST_SUFFIXES = ["myworkdayjobs.com", "myworkdaysite.com"];
 let workdayCtx = null;  // { tab, state, tenantHost, credentials } for the visible card
 
 function workdayHostOf(url) {
   try {
-    const h = new URL(url).hostname.toLowerCase();
-    return h.endsWith(WORKDAY_HOST_SUFFIX) ? h : null;
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    return u.protocol === "https:" && WORKDAY_HOST_SUFFIXES.some(
+      (s) => h === s || h.endsWith("." + s)
+    ) ? h : null;
   } catch (_) { return null; }
 }
 
