@@ -14,7 +14,6 @@
   // Mirror of manifest.host_permissions — origins we hold unconditionally.
   const ALWAYS = [
     /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\//i,
-    /^https:\/\/jobsmith\.d\.salehh\.xyz\//i,
     /^https:\/\/(?:[a-z0-9-]+\.)*linkedin\.com\//i,
     /^https:\/\/(?:[a-z0-9-]+\.)*indeed\.com\//i,
   ];

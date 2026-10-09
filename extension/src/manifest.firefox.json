@@ -13,7 +13,6 @@
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
-    "https://jobsmith.d.salehh.xyz/*",
     "https://*.linkedin.com/*",
     "https://*.indeed.com/*"
   ],
@@ -32,8 +31,7 @@
     {
       "matches": [
         "http://localhost/assist/launch/*",
-        "http://127.0.0.1/assist/launch/*",
-        "https://jobsmith.d.salehh.xyz/assist/launch/*"
+        "http://127.0.0.1/assist/launch/*"
       ],
       "js": [
         "common/storage.js",

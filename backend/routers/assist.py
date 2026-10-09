@@ -26,7 +26,7 @@ router = APIRouter()
 
 
 def _external_base_url() -> str:
-    """Return the explicitly configured HTTPS origin for a remote dashboard."""
+    """Explicit HTTPS origin for handoffs opened by a remote dashboard."""
     value = os.environ.get("JOBSMITH_EXTERNAL_URL", "").strip().rstrip("/")
     if not value:
         return ""
