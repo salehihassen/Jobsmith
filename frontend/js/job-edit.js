@@ -1,5 +1,5 @@
-// Edit posting facts from any Inbox or Pipeline surface. Identity, stage and
-// generated documents remain on the same tracked job.
+// Edit posting facts and job state from any Inbox or Pipeline surface.
+// Generated documents and outcome history remain on the same tracked job.
 function jobEditValues(job) {
     return {
         title: job.title || '', company: job.company || '', location: job.location || '',
@@ -12,13 +12,70 @@ function jobEditValues(job) {
     };
 }
 
-async function editJobDetails(jobId) {
+function jobStateControl(job) {
+    const app = job.application;
+    if (app && app.status === 'applied') {
+        return { value: app.outcome || 'awaiting', options: OUTCOME_OPTIONS, submitted: true };
+    }
+    const current = (app && app.status) || job.status || 'discovered';
+    const labels = { discovered: 'Inbox', shortlisted: 'Shortlisted', passed: 'Passed',
+        pending_review: 'Ready to Review', approved: 'Approved', failed: 'Submission failed',
+        applying: 'Submitting application', tailoring: 'Tailoring', manual: 'Applied' };
+    const locked = ['applying', 'tailoring'].includes(current);
+    const options = app || locked ? [[current, labels[current] || current]]
+        : [['discovered', 'Inbox'], ['shortlisted', 'Shortlisted'], ['passed', 'Passed']];
+    if (!options.some(([value]) => value === current)) options.push([current, labels[current] || current]);
+    if (!locked && !options.some(([value]) => value === 'manual')) options.push(['manual', 'Applied (submitted manually)']);
+    return { value: current, options, locked, submitted: false };
+}
+
+async function saveJobState(job, value) {
+    const control = jobStateControl(job);
+    const url = control.submitted ? `/api/applications/${encodeURIComponent(job.application.id)}/outcome`
+        : `/api/jobs/${encodeURIComponent(job.id)}/status`;
+    await api(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(control.submitted ? { outcome: value } : { status: value }) });
+}
+
+async function refreshJobSurface() {
+    if (location.hash.replace('#', '') === 'review') {
+        if (typeof isBoardModeActive === 'function' && isBoardModeActive()) await renderBoard();
+        else switchReviewView(currentReviewView);
+    } else if (typeof isInboxStageActive === 'function' && isInboxStageActive()) await loadStage();
+    else await loadJobs();
+    if (typeof refreshFunnelCounts === 'function') refreshFunnelCounts();
+}
+
+async function markJobRejected(jobId) {
+    try {
+        const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+        if (!job.application || job.application.status !== 'applied') {
+            toast('Mark this job as applied before recording an employer rejection.', 'error');
+            return;
+        }
+        await saveJobState(job, 'rejected');
+        const updated = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+        updated.app_status = updated.application.status;
+        updated.app_id = updated.application.id;
+        updated.app_outcome = updated.application.outcome;
+        window._currentJobs = window._currentJobs || {};
+        window._currentJobs[jobId] = updated;
+        if (typeof isJobModalOpen === 'function' && isJobModalOpen()) await openJobModal(jobId);
+        else if (typeof selectJob === 'function' && typeof selectedJobId !== 'undefined' && selectedJobId === jobId) await selectJob(jobId);
+        await refreshJobSurface();
+        toast('Marked rejected', 'success');
+    } catch (e) { toast('Failed to mark rejected', 'error'); }
+}
+
+async function editJobDetails(jobId, focusState = false) {
     if (document.getElementById('job-edit-overlay')) return;
     let job;
     try { job = await api(`/api/jobs/${encodeURIComponent(jobId)}`); }
     catch (e) { toast('Failed to load job details', 'error'); return; }
     if (document.getElementById('job-edit-overlay')) return;
-    const original = jobEditValues(job);
+    let original = jobEditValues(job);
+    const stateControl = jobStateControl(job);
+    original.job_state = stateControl.value;
     const returnToModal = typeof isJobModalOpen === 'function' && isJobModalOpen();
     const previousFocus = document.activeElement;
     if (typeof _closeCardMenu === 'function') _closeCardMenu();
@@ -33,10 +90,14 @@ async function editJobDetails(jobId) {
     const select = (key, label, options) => `
         <div class="form-group"><label for="job-edit-${key}">${label}</label>
         <select id="job-edit-${key}" name="${key}">${options.map(([value, text]) =>
-            `<option value="${value}"${original[key] === value ? ' selected' : ''}>${text}</option>`).join('')}</select></div>`;
+            `<option value="${escapeHtml(value)}"${original[key] === value ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></div>`;
     overlay.innerHTML = `<div class="app-dialog job-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="job-edit-heading">
         <h2 id="job-edit-heading">Edit job</h2>
         <form id="job-edit-form">
+            ${select('job_state', 'Job state', stateControl.options)}
+            <p class="hint">${stateControl.submitted ? 'Record employer responses here. Rejected applications stay in closed history with their documents.'
+                : stateControl.locked ? 'State changes are available after the current operation finishes.'
+                : 'Mark an application as Applied after submitting it. You can then track interviews, offers, and rejections.'}</p>
             ${field('title', 'Job title', 'text', 'required maxlength="500"')}
             ${field('company', 'Company', 'text', 'maxlength="500"')}
             ${field('url', 'Job link', 'url', 'maxlength="8000"')}
@@ -66,6 +127,7 @@ async function editJobDetails(jobId) {
     </div>`;
     document.body.appendChild(overlay);
     const form = overlay.querySelector('form');
+    form.elements.namedItem('job_state').disabled = !!stateControl.locked;
     const save = overlay.querySelector('#job-edit-save');
     const cancel = overlay.querySelector('#job-edit-cancel');
     let saving = false;
@@ -102,6 +164,8 @@ async function editJobDetails(jobId) {
             is_remote: form.elements.namedItem('is_remote').checked,
             is_easy_apply: form.elements.namedItem('is_easy_apply').checked,
         };
+        const stateValue = value('job_state');
+        const stateChanged = stateValue !== stateControl.value;
         const changes = Object.fromEntries(Object.entries(current).filter(([key, value]) =>
             JSON.stringify(value) !== JSON.stringify(original[key])));
         const error = overlay.querySelector('#job-edit-error');
@@ -109,25 +173,37 @@ async function editJobDetails(jobId) {
         if (current.salary_min !== null && current.salary_max !== null && current.salary_min > current.salary_max) {
             error.textContent = 'Minimum pay cannot exceed maximum pay.'; return;
         }
-        if (!Object.keys(changes).length) { await close(); return; }
+        if (!Object.keys(changes).length && !stateChanged) { await close(); return; }
         saving = true;
         save.disabled = cancel.disabled = true;
         save.textContent = 'Saving…';
         error.textContent = '';
+        let postingSaved = false;
         try {
-            const updated = await api(`/api/jobs/${encodeURIComponent(jobId)}`, {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
-            });
+            let updated = job;
+            if (Object.keys(changes).length) {
+                updated = await api(`/api/jobs/${encodeURIComponent(jobId)}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
+                });
+                postingSaved = true;
+                job = updated;
+                original = { ...jobEditValues(updated), job_state: stateControl.value };
+            }
+            if (stateChanged) {
+                await saveJobState(job, stateValue);
+                updated = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+            }
             if (updated.application) {
                 updated.app_status = updated.application.status;
                 updated.app_id = updated.application.id;
+                updated.app_outcome = updated.application.outcome;
             }
             window._currentJobs = window._currentJobs || {};
             window._currentJobs[jobId] = updated;
         } catch (e) {
             const details = safeParseJSON(e.message, null);
-            error.textContent = (details && typeof details.detail === 'string' ? details.detail : null)
-                || 'Could not save this job. Check the fields and try again.';
+            error.textContent = (postingSaved ? 'Posting details saved. Could not update the job state: ' : '') + ((details && typeof details.detail === 'string' ? details.detail : null)
+                || 'Could not save this job. Check the fields and try again.');
             saving = false;
             save.disabled = cancel.disabled = false;
             save.textContent = 'Save changes';
@@ -135,13 +211,8 @@ async function editJobDetails(jobId) {
         }
         saving = false;
         await close();
-        toast('Job details saved', 'success');
-        // Reload the active surface so corrected company/title/link are visible.
-        if (location.hash.replace('#', '') === 'review') {
-            if (typeof isBoardModeActive === 'function' && isBoardModeActive()) await renderBoard();
-            else switchReviewView(currentReviewView);
-        } else if (typeof isInboxStageActive === 'function' && isInboxStageActive()) await loadStage();
-        else await loadJobs();
+        toast('Job updated', 'success');
+        await refreshJobSurface();
     });
-    form.elements.namedItem('title').focus();
+    form.elements.namedItem(focusState ? 'job_state' : 'title').focus();
 }

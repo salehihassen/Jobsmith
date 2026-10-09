@@ -253,6 +253,8 @@ function renderJobs(jobs, total) {
         // A deleted job may still carry an application row; in the recycle bin
         // its own 'deleted' status wins over the application's.
         const status = job.status === 'deleted' ? 'deleted' : (job.app_status || job.status);
+        const outcome = job.app_outcome || (job.application && job.application.outcome);
+        const outcomeLabel = status === 'applied' && outcome ? (OUTCOME_OPTIONS.find(([value]) => value === outcome) || [outcome, outcome])[1] : '';
         const statusLabel = {tailoring: 'Tailoring...', applying: 'Applying...', applied: 'Applied', discovered: 'New', shortlisted: 'Shortlisted', passed: 'Passed', pending_review: 'Pending', approved: 'Approved', rejected: 'Rejected', failed: 'Failed', manual: 'Manual', autofill_complete: 'Autofill Complete', already_applied: 'Already Applied', rate_limited: 'Rate Limited', needs_review: 'Needs Review', paused: 'Paused', deleted: 'Deleted'}[status] || status;
         const isSelected = job.id === selectedJobId;
 
@@ -277,6 +279,7 @@ function renderJobs(jobs, total) {
                     <div class="job-card-right">
                         ${renderHeatChip(job.fit_score)}
                         <span class="pill pill-${status}">${statusLabel}</span>
+                        ${outcomeLabel ? `<span class="pill">${escapeHtml(outcomeLabel)}</span>` : ''}
                         ${status === 'discovered' ? `
                         <div class="row-verdicts" onclick="event.stopPropagation()">
                             <button type="button" class="rverdict no" onclick="passJob('${safeId(job.id)}')" aria-label="Pass" title="Pass  (X or ←)">${VERDICT_X_SVG}</button>
@@ -346,6 +349,8 @@ function buildJobDetailHtml(job) {
     // status wins over the application's (same rule as the list rows).
     const isDeleted = job.status === 'deleted';
     const status = isDeleted ? 'deleted' : (job.app_status || job.status);
+    const outcome = job.app_outcome || (job.application && job.application.outcome);
+    const outcomeLabel = status === 'applied' && outcome ? (OUTCOME_OPTIONS.find(([value]) => value === outcome) || [outcome, outcome])[1] : '';
     const statusLabel = {tailoring: 'Tailoring...', applying: 'Applying...', applied: 'Applied', discovered: 'New', shortlisted: 'Shortlisted', passed: 'Passed', pending_review: 'Pending', approved: 'Approved', rejected: 'Rejected', failed: 'Failed', manual: 'Manual', autofill_complete: 'Autofill Complete', already_applied: 'Already Applied', rate_limited: 'Rate Limited', needs_review: 'Needs Review', paused: 'Paused', deleted: 'Deleted'}[status] || status;
 
     return `
@@ -355,6 +360,7 @@ function buildJobDetailHtml(job) {
                 <div class="detail-company">${escapeHtml(job.company || 'Unknown')}${job.location ? ' \u2014 ' + escapeHtml(job.location) : ''}</div>
                 <div class="detail-meta">
                     <span class="pill pill-${status}">${statusLabel}</span>
+                    ${outcomeLabel ? `<span class="pill">${escapeHtml(outcomeLabel)}</span>` : ''}
                     <span class="source-badge">${escapeHtml(job.source)}</span>
                     ${job.is_easy_apply ? '<span class="easy-apply-badge" title="Jobs you can apply to directly on the source site, without a separate employer portal">Easy Apply</span>' : ''}
                     ${qualityBadge(job)}

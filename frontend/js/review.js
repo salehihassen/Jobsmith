@@ -841,7 +841,7 @@ function renderReviewQueue(apps) {
                         <a class="btn btn-secondary btn-sm" href="${escapeHtml(safeHref(app.url))}" target="_blank" rel="noopener" data-jobsmith-open-url data-jobsmith-job-id="${escapeHtml(app.job_id)}">Open Job URL</a>
                     ` : `
                         ${window._autoApplyEnabled ? `<button class="btn btn-primary btn-sm" onclick="autoApply('${escapeHtml(app.id)}')">Auto Apply</button>` : ''}
-                        ${renderJobActions({ id: app.job_id, url: app.url, status: app.status }, 'review-detail')}
+                        ${renderJobActions({ id: app.job_id, url: app.url, status: app.status, app_status: app.status, app_outcome: app.outcome }, 'review-detail')}
                         <button class="btn btn-green btn-sm" onclick="markAppApplied('${escapeHtml(app.id)}')">Mark Applied</button>
                         <button class="btn btn-danger btn-sm" onclick="rejectApp('${escapeHtml(app.id)}')">Reject</button>
                     `}

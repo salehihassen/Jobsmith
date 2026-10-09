@@ -59,6 +59,18 @@ const JOB_ACTIONS = {
         handler: (id) => `editJobDetails('${id}')`,
         visible: (job) => !jobIsDeleted(job),
     },
+    'update-state': {
+        kind: 'secondary', label: 'Update state',
+        handler: (id) => `editJobDetails('${id}',true)`,
+        visible: (job) => !jobIsDeleted(job),
+    },
+    'mark-rejected': {
+        kind: 'secondary', label: 'Mark rejected',
+        handler: (id) => `markJobRejected('${id}')`,
+        visible: (job) => !jobIsDeleted(job)
+            && (job.app_status || (job.application && job.application.status)) === 'applied'
+            && (job.app_outcome || (job.application && job.application.outcome)) !== 'rejected',
+    },
     'score': {
         kind: 'secondary',
         label: (job) => (job.fit_score ? 'Rescore' : 'Score'),
@@ -148,7 +160,7 @@ const JOB_ACTION_ORDER = {
         deleted: ['restore', 'erase'],
     },
     'detail': {
-        live: ['edit-job', 'score', 'tailor', 'assist', 'view-application', 'open-url',
+        live: ['edit-job', 'update-state', 'mark-rejected', 'score', 'tailor', 'assist', 'view-application', 'open-url',
                'mark-applied', 'embellishments', 'delete'],
         deleted: ['restore', 'open-url', 'erase'],
     },
@@ -169,7 +181,7 @@ const JOB_ACTION_ORDER = {
         deleted: [],
     },
     'review-detail': {
-        live: ['edit-job', 'assist'],
+        live: ['edit-job', 'update-state', 'mark-rejected', 'assist'],
         deleted: [],
     },
 };

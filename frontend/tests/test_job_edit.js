@@ -11,7 +11,7 @@ const addListener = w.document.addEventListener.bind(w.document);
 w.document.addEventListener = (type, ...args) => {
     if (type !== 'DOMContentLoaded') addListener(type, ...args);
 };
-w.eval(['core.js', 'job-actions.js', 'jobs-actions.js', 'job-edit.js'].map(file =>
+w.eval(['core.js', 'review.js', 'job-actions.js', 'jobs-actions.js', 'job-edit.js'].map(file =>
     fs.readFileSync(path.join(__dirname, '../js', file), 'utf8')).join('\n;\n'));
 const original = {
     id: 'j1', title: '<script>hostile title</script>', company: 'Incorrect company',

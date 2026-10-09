@@ -96,3 +96,10 @@ The board now supports dragging Applied, Interviewing, or Offer into closed
 history to record `outcome: rejected`, including via the collapsed history
 summary. Turn down / withdraw remains an explicit menu action. Rejection does
 not change submission status or delete the saved application documents.
+
+The posting editor includes a Job state selector. Submitted applications can
+record awaiting response, no response, screening, interview, offer, rejected,
+and withdrawn outcomes. Unsent roles can be marked Applied manually first;
+active tailoring/submission work locks the state selector until it finishes.
+The opened job card also offers Update state and a direct Mark rejected action
+for submitted applications, and displays the saved outcome alongside Applied.

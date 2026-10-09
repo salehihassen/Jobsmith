@@ -175,13 +175,13 @@ checks.push(["deleted-row markup uses the short row copy",
 const ext = jobs["external w/ url + app"];
 checks.push(["golden: detail ids",
   jobActionIds(ext, "detail").join() ===
-    "edit-job,score,tailor,assist,view-application,mark-applied,embellishments,delete"]);
+    "edit-job,update-state,score,tailor,assist,view-application,mark-applied,embellishments,delete"]);
 checks.push(["golden: external apply_type still suppresses Open Job URL",
   !jobActionIds(ext, "detail").includes("open-url")
     && jobActionIds({ ...ext, apply_type: undefined }, "detail").includes("open-url")]);
 checks.push(["golden: list row ids", jobActionIds(ext, "list-row").join() === "assist"]);
 checks.push(["golden: review row ids", jobActionIds(ext, "review-row").join() === "edit-job,tailor,score,pass"]);
-checks.push(["golden: review detail ids", jobActionIds(ext, "review-detail").join() === "edit-job,assist"]);
+checks.push(["golden: review detail ids", jobActionIds(ext, "review-detail").join() === "edit-job,update-state,assist"]);
 checks.push(["golden: kanban menu ids", jobActionIds(ext, "kanban-menu").join() === "edit-job,delete"]);
 
 const detailHtml = renderJobActions(ext, "detail");
