@@ -6,6 +6,13 @@
 // and the error-banner failure path.
 
 const { loadDom, evalScript, report } = require("./helpers");
+const fs = require("fs");
+const path = require("path");
+
+// Exercise the panel's credential gate as well as the injected runtime's gate.
+const panelSource = fs.readFileSync(path.join(__dirname, "../src/sidepanel.js"), "utf8");
+const panelGate = panelSource.match(/function workdayHostOf\(url\) \{[\s\S]*?\n\}/)[0];
+const panelSuffixes = panelSource.match(/const WORKDAY_HOST_SUFFIX\w* = [^;]+;/)[0];
 
 const WD_URL = "https://acme.wd5.myworkdayjobs.com/en-US/careers/login";
 
@@ -44,6 +51,36 @@ function armed(html, url) {
 
 async function main() {
   const checks = [];
+
+  for (const url of [
+    "https://notmyworkdayjobs.com/login",
+    "https://notmyworkdaysite.com/login",
+    "https://myworkdayjobs.com.evil.example/login",
+    "http://acme.wd5.myworkdayjobs.com/login",
+    "http://acme.wd1.myworkdaysite.com/login",
+  ]) {
+    const w = armed(signinHTML(), url);
+    w.eval(panelSuffixes + "\n" + panelGate);
+    let submitted = false;
+    w.document.querySelector("button").addEventListener("click", () => {
+      submitted = true;
+      w.document.getElementById("auth").remove();
+    });
+    checks.push([`panel rejects ${url}`, w.workdayHostOf(url) === null]);
+    checks.push([`runtime ignores ${url}`, w.__jobsmithWorkdayAuthState().state === "none"]);
+    const out = await w.__jobsmithWorkdayAuth("audit@example.com", "dummy-password");
+    checks.push([`credentials never filled/submitted on ${url}`,
+      !out.ok && !submitted && w.document.querySelector("input[type='password']").value === ""]);
+    w.close();
+  }
+
+  for (const url of [WD_URL, "https://acme.wd1.myworkdaysite.com/login"]) {
+    const w = armed(signinHTML(), url);
+    w.eval(panelSuffixes + "\n" + panelGate);
+    checks.push([`panel accepts ${url}`, w.workdayHostOf(url) === new URL(url).hostname]);
+    checks.push([`runtime accepts ${url}`, w.__jobsmithWorkdayAuthState().state === "signin"]);
+    w.close();
+  }
 
   // --- State detection --------------------------------------------------
   {
