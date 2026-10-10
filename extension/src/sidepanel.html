@@ -125,6 +125,13 @@
     min-height: 0;
   }
   .wd-card .wd-status:not(:empty) { margin-top: 8px; }
+  .wd-card.wd-blocked {
+    background: rgba(251,113,133,0.08);
+    border-color: rgba(251,113,133,0.4);
+    border-left-color: var(--err);
+  }
+  .wd-card.wd-blocked .wd-title { color: var(--err); }
+  .wd-card.wd-blocked .wd-hint { font-size: 12px; line-height: 1.5; }
 
   /* Attachment tiles */
   .tiles {
@@ -422,6 +429,11 @@
     <button id="loadJob">Load</button>
   </div>
   <div id="jobContext" class="job-context"></div>
+
+  <div id="workdayBlocked" class="wd-card wd-blocked" role="status" hidden>
+    <div class="wd-title">Workday sign-in blocked</div>
+    <div class="wd-hint" id="workdayBlockedReason"></div>
+  </div>
 
   <div id="workdayCard" class="wd-card" hidden>
     <div class="wd-title" id="workdayTitle">Workday</div>

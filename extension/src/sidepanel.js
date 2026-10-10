@@ -467,6 +467,27 @@ function workdayHostOf(url) {
   } catch (_) { return null; }
 }
 
+function updateWorkdayBlockedNotice(url) {
+  const notice = $("workdayBlocked");
+  if (!notice) return;
+  let reason = "";
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    // Only flag destinations resembling Workday. Other ATS sites keep their
+    // normal scan/autofill UI, including URLs mentioning Workday in the path.
+    if (!workdayHostOf(url) && WORKDAY_HOST_SUFFIXES.some((s) => h.includes(s))) {
+      const trustedHost = WORKDAY_HOST_SUFFIXES.some((s) => h === s || h.endsWith("." + s));
+      reason = trustedHost
+        ? "Workday sign-in requires HTTPS."
+        : `${h} is not a trusted Workday domain.`;
+      reason += " Automatic Workday sign-in will not fill or submit your credentials here.";
+    }
+  } catch (_) { /* Not a web URL. */ }
+  $("workdayBlockedReason").textContent = reason;
+  notice.hidden = !reason;
+}
+
 function hideWorkdayCard() {
   workdayCtx = null;
   const card = $("workdayCard");
@@ -478,6 +499,7 @@ async function refreshWorkdayCard() {
   if (!card) return;
   try {
     const tab = await activeTab();
+    updateWorkdayBlockedNotice(tab && tab.url || "");
     if (!tab || !tab.id || !workdayHostOf(tab.url || "")) { hideWorkdayCard(); return; }
 
     // Read the on-page auth state (create vs signin vs none).
@@ -541,6 +563,7 @@ async function doWorkdayAuth() {
   status.className = "wd-status";
   try {
     const tab = await activeTab();
+    updateWorkdayBlockedNotice(tab && tab.url || "");
     if (!tab || !tab.id || !workdayHostOf(tab.url || "")) {
       hideWorkdayCard();
       return;
