@@ -239,6 +239,7 @@
                                         <button class="btn btn-danger btn-sm run-verb-stop" id="detect-stop-btn" onclick="cancelDetectApplyTypes()" style="display:none">Stop detection</button>
                                         <div id="detect-result" class="run-popover-hint" style="display:none"></div>
                                         <div class="run-menu-sep"></div>
+                                        <button class="run-menu-item" role="menuitem" onclick="toggleRunPopover('more');addJobManually()">Add job manually (no URL needed)</button>
                                         <div class="run-menu-label">Add job by URL</div>
                                         <div class="run-add-url">
                                             <input type="url" id="manual-url-input" placeholder="https://..." class="input" />
@@ -382,6 +383,7 @@
                     <div class="toolbar-left">
                         <span class="eyebrow" style="margin-right:4px" title="Scout = triage: skim new jobs and shortlist the good ones">Scout</span>
                         <button class="btn btn-primary btn-sm" onclick="stageFetch()" title="Fetch new jobs from your configured sources">Fetch Jobs</button>
+                        <button class="btn btn-secondary btn-sm" onclick="addJobManually()">Add job manually</button>
                         <button class="btn btn-ghost btn-sm" id="toggle-select-btn" onclick="toggleSelectMode()">Select</button>
                         <button class="btn btn-ghost btn-sm inbox-view-toggle" id="inbox-view-toggle" onclick="toggleInboxView()" title="Switch the Inbox between the triage cards and the list (L)">List view</button>
                     </div>
@@ -436,6 +438,7 @@
                 <div class="pipeline-toolbar">
                     <div class="toolbar-left">
                         <span class="eyebrow" style="margin-right:4px" title="Pipeline = everything you shortlisted, by stage">Pipeline</span>
+                        <button class="btn btn-secondary btn-sm" onclick="addJobManually('shortlisted')">Add job manually</button>
                         <button class="btn btn-ghost btn-sm pipeline-view-toggle" id="pipeline-view-toggle" onclick="togglePipelineView()" title="Switch the Pipeline between the drag-and-drop board and the stage tables (L)">Table view</button>
                     </div>
                 </div>
@@ -1513,15 +1516,15 @@
     <script src="js/dashboard.js?v=42"></script>
     <!-- The per-job action registry must define jobActions()/renderJobActions()
          before its consumers (jobs.js, review.js, deck.js) render anything. -->
-    <script src="js/job-actions.js?v=3"></script>
+    <script src="js/job-actions.js?v=4"></script>
     <script src="js/jobs.js?v=53"></script>
     <script src="js/review.js?v=48"></script>
     <script src="js/settings.js?v=49"></script>
     <script src="js/prompts.js?v=2"></script>
     <script src="js/sessions.js?v=34"></script>
     <script src="js/jobs-actions.js?v=42"></script>
-    <script src="js/deck.js?v=18"></script>
-    <script src="js/job-edit.js?v=2"></script>
+    <script src="js/deck.js?v=19"></script>
+    <script src="js/job-edit.js?v=3"></script>
     <script src="js/onboarding.js?v=45"></script>
 </body>
 </html>

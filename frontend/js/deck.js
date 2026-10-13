@@ -1183,6 +1183,7 @@ function _buildRegistry() {
         { group: 'Actions', label: 'Estimate salaries', keywords: 'market comp pay', run: () => _runIf('estimateSalariesAll') },
         { group: 'Actions', label: 'Detect Easy Apply', keywords: 'apply type classify', run: () => _runIf('detectApplyTypes') },
         { group: 'Actions', label: 'Add job by URL', keywords: 'ingest manual link paste', run: paletteAddUrl },
+        { group: 'Actions', label: 'Add job manually', keywords: 'no url recruiter linkedin message referral email', run: () => _runIf('addJobManually') },
         { group: 'Actions', label: 'Toggle theme', keywords: 'dark light appearance', run: () => _runIf('toggleTheme') },
         { group: 'Actions', label: 'Toggle Inbox view (cards / list)', keywords: 'layout deck stage triage classic', run: () => { location.hash = 'jobs'; setTimeout(() => _runIf('toggleInboxView'), 0); } },
         { group: 'Actions', label: 'Toggle Pipeline view (board / table)', keywords: 'layout kanban classic tabs review', run: () => { location.hash = 'review'; setTimeout(() => _runIf('togglePipelineView'), 0); } },

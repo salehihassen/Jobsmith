@@ -67,16 +67,22 @@ async function markJobRejected(jobId) {
     } catch (e) { toast('Failed to mark rejected', 'error'); }
 }
 
-async function editJobDetails(jobId, focusState = false) {
+function addJobManually(initialState = 'discovered') {
+    return editJobDetails(null, false, initialState);
+}
+
+async function editJobDetails(jobId, focusState = false, initialState = 'discovered') {
     if (document.getElementById('job-edit-overlay')) return;
+    const creating = !jobId;
     let job;
-    try { job = await api(`/api/jobs/${encodeURIComponent(jobId)}`); }
+    try { job = creating ? { status: initialState } : await api(`/api/jobs/${encodeURIComponent(jobId)}`); }
     catch (e) { toast('Failed to load job details', 'error'); return; }
     if (document.getElementById('job-edit-overlay')) return;
     let original = jobEditValues(job);
     const stateControl = jobStateControl(job);
+    if (creating) stateControl.options = [['discovered', 'Inbox'], ['shortlisted', 'Shortlisted'], ['manual', 'Applied (submitted manually)']];
     original.job_state = stateControl.value;
-    const returnToModal = typeof isJobModalOpen === 'function' && isJobModalOpen();
+    const returnToModal = !creating && typeof isJobModalOpen === 'function' && isJobModalOpen();
     const previousFocus = document.activeElement;
     if (typeof _closeCardMenu === 'function') _closeCardMenu();
     if (returnToModal) closeJobModal();
@@ -92,7 +98,7 @@ async function editJobDetails(jobId, focusState = false) {
         <select id="job-edit-${key}" name="${key}">${options.map(([value, text]) =>
             `<option value="${escapeHtml(value)}"${original[key] === value ? ' selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></div>`;
     overlay.innerHTML = `<div class="app-dialog job-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="job-edit-heading">
-        <h2 id="job-edit-heading">Edit job</h2>
+        <h2 id="job-edit-heading">${creating ? 'Add job manually' : 'Edit job'}</h2>
         <form id="job-edit-form">
             ${select('job_state', 'Job state', stateControl.options)}
             <p class="hint">${stateControl.submitted ? 'Record employer responses here. Rejected applications stay in closed history with their documents.'
@@ -100,7 +106,7 @@ async function editJobDetails(jobId, focusState = false) {
                 : 'Mark an application as Applied after submitting it. You can then track interviews, offers, and rejections.'}</p>
             ${field('title', 'Job title', 'text', 'required maxlength="500"')}
             ${field('company', 'Company', 'text', 'maxlength="500"')}
-            ${field('url', 'Job link', 'url', 'maxlength="8000"')}
+            ${field('url', creating ? 'Job link (optional)' : 'Job link', 'url', 'maxlength="8000"')}
             ${field('location', 'Location', 'text', 'maxlength="500"')}
             <div class="job-edit-pay">
                 ${field('salary_min', 'Minimum pay', 'number', 'min="0" step="any"')}
@@ -111,17 +117,17 @@ async function editJobDetails(jobId, focusState = false) {
             ${select('apply_type', 'Application type', [['unknown', 'Unspecified'], ['external', 'Employer site'], ['easy_apply', 'LinkedIn Easy Apply'], ['quick_apply', 'Indeed Quick Apply']])}
             <div class="form-group"><label for="job-edit-tags">Tags (one per line)</label>
                 <textarea id="job-edit-tags" name="tags" rows="3">${escapeHtml(original.tags.join('\n'))}</textarea></div>
-            <div class="form-group"><label for="job-edit-description">Description</label>
-                <textarea id="job-edit-description" name="description" rows="8" maxlength="100000">${escapeHtml(original.description)}</textarea></div>
+            <div class="form-group"><label for="job-edit-description">${creating ? 'Description or recruiter message' : 'Description'}</label>
+                <textarea id="job-edit-description" name="description" rows="8" maxlength="100000"${creating ? ' placeholder="Paste the role details and recruiter contact information here."' : ''}>${escapeHtml(original.description)}</textarea></div>
             <div class="job-edit-flags">
                 <label><input name="is_remote" type="checkbox"${original.is_remote ? ' checked' : ''}> Remote role</label>
                 <label><input name="is_easy_apply" type="checkbox"${original.is_easy_apply ? ' checked' : ''}> Easy Apply available</label>
             </div>
-            <p class="hint">Changes update this tracked posting. Existing resumes and cover letters stay as saved.</p>
+            <p class="hint">${creating ? 'Only a job title is required. Add roles from LinkedIn messages, email, referrals, or conversations without a posting link.' : 'Changes update this tracked posting. Existing resumes and cover letters stay as saved.'}</p>
             <p id="job-edit-error" class="job-edit-error" role="alert"></p>
             <div class="app-dialog-buttons">
                 <button type="button" class="btn btn-secondary" id="job-edit-cancel">Cancel</button>
-                <button type="submit" class="btn btn-primary" id="job-edit-save">Save changes</button>
+                <button type="submit" class="btn btn-primary" id="job-edit-save">${creating ? 'Add job' : 'Save changes'}</button>
             </div>
         </form>
     </div>`;
@@ -173,7 +179,7 @@ async function editJobDetails(jobId, focusState = false) {
         if (current.salary_min !== null && current.salary_max !== null && current.salary_min > current.salary_max) {
             error.textContent = 'Minimum pay cannot exceed maximum pay.'; return;
         }
-        if (!Object.keys(changes).length && !stateChanged) { await close(); return; }
+        if (!creating && !Object.keys(changes).length && !stateChanged) { await close(); return; }
         saving = true;
         save.disabled = cancel.disabled = true;
         save.textContent = 'Saving…';
@@ -181,7 +187,13 @@ async function editJobDetails(jobId, focusState = false) {
         let postingSaved = false;
         try {
             let updated = job;
-            if (Object.keys(changes).length) {
+            if (creating) {
+                updated = await api('/api/jobs', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...current, status: stateValue }),
+                });
+                jobId = updated.id;
+            } else if (Object.keys(changes).length) {
                 updated = await api(`/api/jobs/${encodeURIComponent(jobId)}`, {
                     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
                 });
@@ -189,7 +201,7 @@ async function editJobDetails(jobId, focusState = false) {
                 job = updated;
                 original = { ...jobEditValues(updated), job_state: stateControl.value };
             }
-            if (stateChanged) {
+            if (!creating && stateChanged) {
                 await saveJobState(job, stateValue);
                 updated = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
             }
@@ -206,12 +218,12 @@ async function editJobDetails(jobId, focusState = false) {
                 || 'Could not save this job. Check the fields and try again.');
             saving = false;
             save.disabled = cancel.disabled = false;
-            save.textContent = 'Save changes';
+            save.textContent = creating ? 'Add job' : 'Save changes';
             return;
         }
         saving = false;
         await close();
-        toast('Job updated', 'success');
+        toast(creating ? 'Job added' : 'Job updated', 'success');
         await refreshJobSurface();
     });
     form.elements.namedItem(focusState ? 'job_state' : 'title').focus();

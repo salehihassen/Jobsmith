@@ -104,7 +104,7 @@ const JOB_ACTIONS = {
         label: 'Open Job URL',
         // External-apply postings route through Apply Assist instead; the raw
         // link would drop the user on the employer portal with no help.
-        visible: (job) => job.apply_type !== 'external',
+        visible: (job) => jobHasUrl(job) && job.apply_type !== 'external',
     },
     'mark-applied': {
         kind: 'green',

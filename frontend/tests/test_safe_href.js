@@ -83,7 +83,7 @@ const evilJob = {
   source: "linkedin",
   status: "discovered",
   url: "javascript:alert(1)",
-  apply_type: "easy_apply", // anything but 'external' renders the Open Job URL link
+  apply_type: "easy_apply",
   description: "hi",
 };
 
@@ -93,11 +93,7 @@ window.selectJob("evil-1");
 const anchors = Array.from(doc.querySelectorAll("#job-detail-pane a"));
 const jobUrlAnchor = anchors.find((a) => a.textContent.includes("Open Job URL"));
 
-checks.push(["Open Job URL anchor renders", !!jobUrlAnchor]);
-checks.push([
-  'javascript: job url renders href="#"',
-  !!jobUrlAnchor && jobUrlAnchor.getAttribute("href") === "#",
-]);
+checks.push(["unsafe job URL does not render an Open Job URL action", !jobUrlAnchor]);
 checks.push([
   "no anchor anywhere has a javascript: href",
   !Array.from(doc.querySelectorAll("a[href]")).some((a) =>

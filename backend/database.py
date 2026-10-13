@@ -440,6 +440,47 @@ async def upsert_job(job: dict) -> Optional[str]:
         await db.close()
 
 
+async def create_manual_job(details: dict, status: str = "discovered") -> str:
+    """Insert user-entered facts and their initial pipeline state atomically.
+
+    A unique external ID keeps linkless roles distinct and syncable across
+    devices, even when two recruiter messages have the same title/company.
+    """
+    editable = {
+        "title", "company", "location", "url", "description", "salary_min",
+        "salary_max", "salary_period", "tags", "date_posted", "is_remote",
+        "is_easy_apply", "apply_type",
+    }
+    if not details.keys() <= editable or status not in ("discovered", "shortlisted", "manual"):
+        raise ValueError("Invalid manual job details or state")
+    job_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    values = {"id": job_id, "source": "manual", "external_id": f"entry-{job_id}",
+              "company": "", "location": "", "url": "", "description": "",
+              "date_discovered": now, "last_seen": now, "times_seen": 1,
+              "status": status, **details}
+    values["date_posted"] = values.get("date_posted") or ""
+    if "tags" in values:
+        values["tags"] = json.dumps(values["tags"])
+    db = await _get_db()
+    try:
+        await db.execute(
+            f"INSERT INTO jobs ({', '.join(values)}) VALUES ({', '.join('?' for _ in values)})",
+            tuple(values.values()),
+        )
+        if status == "manual":
+            await db.execute(
+                "INSERT INTO applications (id, job_id, resume_content, cover_letter_content, "
+                "honesty_level, status, applied_at, created_at) "
+                "VALUES (?, ?, '', '', 'honest', 'applied', ?, ?)",
+                (str(uuid.uuid4()), job_id, now, now),
+            )
+        await db.commit()
+        return job_id
+    finally:
+        await db.close()
+
+
 async def get_known_external_ids(source: str) -> set[str]:
     """External_ids stored for a source with a non-empty description. Lets
     scrapers skip the expensive detail/enrichment fetch for jobs already in

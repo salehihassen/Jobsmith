@@ -220,7 +220,7 @@ checks.push(["golden markup: review row keeps btn-xs + ghost Pass",
 // Hostile ids never break out of the inline handler (safeId, not escapeHtml).
 checks.push(["hostile job ids are stripped from inline handlers",
   (() => {
-    const html = renderJobActions({ id: "x');alert(1);('", status: "shortlisted" }, "detail");
+    const html = renderJobActions({ id: "x');alert(1);('", status: "shortlisted", url: "https://jobs.test/hostile-id" }, "detail");
     // safeId (not escapeHtml) guards inline handlers: the HTML parser decodes
     // entities before the JS string is parsed, so an escaped quote would still
     // break out. Nothing executable survives in any onclick.

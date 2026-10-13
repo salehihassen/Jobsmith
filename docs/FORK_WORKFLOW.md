@@ -141,3 +141,18 @@ Merging and publishing the combined branch does not change `JOBSMITH_IMAGE` or
 recreate the running container. The live instance and its served extension
 require a separate deliberate image update before these fixes are available
 through its download links.
+
+## October 13 manual role entry (fork only)
+
+The combined `saleh` / `fork/saleh-changes` branch supports **Add job manually**
+in Inbox, Pipeline, Activity's More menu, and the command palette. Only the
+title is required; the link is optional. Paste LinkedIn messages, referral
+details, and recruiter contact information in **Description or recruiter
+message**. The entry starts in Inbox by default, or Shortlisted when opened
+from Pipeline; the form also supports already-submitted applications.
+
+Manual entries have unique identities for sync, and can gain a posting link
+later through Edit job. Choosing Applied creates the application record in
+the same transaction so the role appears in Pipeline without tailoring first.
+This change is committed directly to the combined fork branch; no contribution
+branch or upstream PR is prepared yet. Publishing the branch does not deploy it.

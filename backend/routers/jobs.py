@@ -66,6 +66,27 @@ class JobDetailsUpdate(BaseModel):
         return value
 
 
+class ManualJobCreate(JobDetailsUpdate):
+    title: str = Field(min_length=1, max_length=500)
+    company: str = Field(default="", max_length=500)
+    location: str = Field(default="", max_length=500)
+    url: str = Field(default="", max_length=8000)
+    description: str = Field(default="", max_length=100000)
+    status: Literal["discovered", "shortlisted", "manual"] = "discovered"
+
+
+@router.post("/api/jobs", status_code=201)
+async def create_manual_job(body: ManualJobCreate):
+    """Track a recruiter message or other role without fetching a posting URL."""
+    details = body.model_dump(exclude_unset=True, exclude={"status"}, mode="json")
+    low, high = details.get("salary_min"), details.get("salary_max")
+    if low is not None and high is not None and low > high:
+        raise HTTPException(422, "Minimum pay cannot exceed maximum pay")
+    job_id = await db.create_manual_job(details, body.status)
+    await db.log_activity("job_added", f"Manually added '{body.title}'", job_id)
+    return await db.get_job(job_id)
+
+
 @router.patch("/api/jobs/{job_id}")
 async def update_job_details(job_id: str, body: JobDetailsUpdate):
     changes = body.model_dump(exclude_unset=True, mode="json")
