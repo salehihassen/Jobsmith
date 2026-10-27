@@ -443,6 +443,13 @@ async def fetch_jobs_status():
     return state.fetch_status
 
 
+@router.get("/api/jobs/country-filter/report")
+async def country_filter_report():
+    """Last fetch's country decisions, including withheld jobs and evidence."""
+    from ..services.country_eligibility import load_report
+    return load_report()
+
+
 @router.get("/api/operations/status")
 async def operations_status():
     """Return running state of all background operations."""

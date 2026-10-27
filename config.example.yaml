@@ -68,6 +68,10 @@ search:
   - director
   - VP
   min_salary: 80000
+  # Blank disables early country filtering. Otherwise only postings with
+  # evidenced hiring eligibility pass; unknowns/outages are held out. Uses
+  # existing utility AI (falling back to fast), before persistence/scoring.
+  hiring_country: ''
   max_age_days: 7
   greenhouse_boards:
   - example-company

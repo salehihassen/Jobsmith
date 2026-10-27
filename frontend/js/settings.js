@@ -41,6 +41,7 @@ async function loadSettings() {
 
         document.getElementById('cfg-keywords').value = (cfg.search?.keywords || []).join(', ');
         document.getElementById('cfg-locations').value = (cfg.search?.locations || []).join('\n');
+        document.getElementById('cfg-hiring-country').value = cfg.search?.hiring_country || '';
         document.getElementById('cfg-exclude').value = (cfg.search?.exclude_keywords || []).join(', ');
         document.getElementById('cfg-exclude-content').value = (cfg.search?.exclude_content_phrases || []).join('\n');
         document.getElementById('cfg-salary').value = cfg.search?.min_salary || 0;
@@ -808,6 +809,7 @@ async function saveSettings() {
         },
         search: {
             keywords: splitTrim(document.getElementById('cfg-keywords').value),
+            hiring_country: document.getElementById('cfg-hiring-country').value.trim(),
             locations: document.getElementById('cfg-locations').value.split('\n').map(s => s.trim()).filter(Boolean),
             exclude_keywords: splitTrim(document.getElementById('cfg-exclude').value),
             exclude_content_phrases: document.getElementById('cfg-exclude-content').value.split('\n').map(s => s.trim()).filter(Boolean),

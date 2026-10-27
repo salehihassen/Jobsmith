@@ -21,6 +21,7 @@ from . import auto_apply
 from . import applicant_assist
 from .job_sources import fetch_all_jobs
 from .services import posting_quality
+from .services.country_eligibility import filter_jobs_for_country
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,12 @@ async def _bg_fetch_jobs(sources: list[str] | None = None):
                 state.fetch_status.update(phase="done", detail="Fetch cancelled", active=False)
                 state.push_notification("fetch", "Job Fetch Cancelled", "Job fetch was stopped by user", "info")
                 return
+        # This boundary also covers the outer-timeout recovery path, which
+        # bypasses fetch_all_jobs' final filtering pass.
+        jobs = await filter_jobs_for_country(
+            jobs, cfg, on_progress=_update_fetch_status,
+            cancelled=lambda: state.cancel_fetch.is_set() and not state.fetch_keep_partial,
+        )
         state.fetch_status.update(phase="saving", detail=f"Saving {len(jobs)} jobs to database...", jobs_found=len(jobs))
         inserted = 0
         for i, job in enumerate(jobs):
@@ -106,6 +113,9 @@ async def _bg_fetch_jobs(sources: list[str] | None = None):
             names = state.fetch_status.get(status_key)
             if names:
                 issues.append(f"{label}: {', '.join(names)}")
+        country_counts = state.fetch_status.get("country_filter", {})
+        if country_counts:
+            issues.append(f"country filter: {country_counts['ineligible']} excluded, {country_counts['unknown']} unverified (held out)")
         issue_suffix = f" ({'; '.join(issues)})" if issues else ""
         state.fetch_status.update(phase="done", detail=f"{done_label} — {len(jobs)} jobs found, {inserted} new{issue_suffix}", jobs_found=len(jobs), jobs_inserted=inserted, active=False)
         await db.log_activity("jobs_fetched", f"Fetched {len(jobs)} jobs ({inserted} new) from {src_label}")
