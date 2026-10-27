@@ -20,17 +20,34 @@ CONFIG = {"profile": {"country": "United States"},
           "search": {"hiring_country": "United States"}}
 
 
+def _fullstack(location):
+    # Production example: company background mentions North America/the
+    # Americas, while THIS role is explicitly scoped to Latin America.
+    return {
+        "source": "linkedin", "company": "FullStack",
+        "title": "Forward Deployed Engineer (TypeScript + AI) - Remote - Latin America",
+        "location": location, "is_remote": True,
+        "description": "With now over 600 customers in North America. "
+                       "Offering life-changing career opportunities to talented "
+                       "software professionals across the Americas. 100% remote work.",
+        "url": "https://example.com/fullstack-latam",
+    }
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("partial", [False, True])
-async def test_ineligible_remote_never_reaches_database(monkeypatch, tmp_path, partial):
+@pytest.mark.parametrize("job", [FOREIGN, _fullstack("Sucre, Chuquisaca, Bolivia"),
+                                 _fullstack("Cuenca, Azuay, Ecuador")],
+                         ids=["restricted-wwr", "fullstack-bolivia", "fullstack-ecuador"])
+async def test_ineligible_remote_never_reaches_database(monkeypatch, tmp_path, partial, job):
     async def fetch(*args, **kwargs):
         if partial:
-            kwargs["_partial_collector"].append(dict(FOREIGN))
+            kwargs["_partial_collector"].append(dict(job))
             raise asyncio.TimeoutError
-        return [dict(FOREIGN)]
+        return [dict(job)]
 
     async def classify(postings, country, config):
-        return {p["id"]: {"decision": "ineligible", "evidence": FOREIGN["description"]} for p in postings}
+        return {p["id"]: {"decision": "ineligible", "evidence": "Latin America"} for p in postings}
 
     monkeypatch.setattr(state, "load_config", lambda: CONFIG)
     monkeypatch.setattr(state, "push_notification", lambda *a: None)

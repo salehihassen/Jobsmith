@@ -72,3 +72,12 @@ it never reaches `db.upsert_job`, both on normal fetch and timeout recovery.
 Further tests cover supported US/worldwide decisions, unsupported evidence,
 unknowns, outages, disabled configuration, cancellation, invalid/duplicate IDs,
 context limits, and cache invalidation.
+
+The additional production example, FullStack's **Forward Deployed Engineer
+(TypeScript + AI) - Remote - Latin America**, appears in both Sucre, Bolivia
+and Cuenca, Ecuador. The original location filter accepts both. The patched
+gate was checked against both complete production descriptions with the live
+utility API and rejected both, quoting `Remote - Latin America`. Generic company
+background about North American customers and talent across the Americas did
+not override the role-specific restriction. Both locations are covered by the
+save-boundary regression, including timeout recovery.
