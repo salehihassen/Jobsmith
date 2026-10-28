@@ -1008,7 +1008,8 @@ function boardCardMenu(ev, colKey, id, jobId) {
     // moves above stay here because they are column-driven, not job-driven.
     + (jobId ? renderJobActions({ id: jobId }, 'kanban-menu') : '')
     + (['applied', 'interviewing', 'offer'].includes(colKey) ? `
-        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','withdrawn')">Turn down / withdraw</button>` : '')
+        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','withdrawn')">Turn down / withdraw</button>
+        <button role="menuitem" onclick="_runCardOutcome('${safeId(String(id))}','no_response')">Mark ghosted</button>` : '')
     + (!opts.length && !jobId ? `<button role="menuitem" disabled>No actions available</button>` : '');
     document.body.appendChild(menu);
     const btn = ev.currentTarget || ev.target;

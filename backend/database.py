@@ -1524,13 +1524,20 @@ _STAGE_ORDER = ("screening", "interview", "offer")
 
 
 async def update_application_outcome(
-    app_id: str, outcome: str, *, note: Optional[str] = None, source: str = "user"
+    app_id: str,
+    outcome: str,
+    *,
+    note: Optional[str] = None,
+    source: str = "user",
+    only_from: Optional[str] = None,
 ) -> bool:
     """Update the post-apply outcome for an application.
 
     Writes an `application_events` row and the denormalized `outcome` column in
     one transaction. Raises ValueError for outcomes outside VALID_OUTCOMES.
-    Returns False when no application matches app_id.
+    Returns False when no application matches app_id, or when `only_from` is
+    given and the current outcome isn't it (so an automatic writer can't clobber
+    a change the user made after it last looked).
     """
     if outcome not in VALID_OUTCOMES:
         raise ValueError(f"outcome must be one of: {sorted(VALID_OUTCOMES)}")
@@ -1543,6 +1550,8 @@ async def update_application_outcome(
         if row is None:
             return False
         previous = row["outcome"]
+        if only_from is not None and (previous or "awaiting") != only_from:
+            return False
         if previous == outcome:
             return True  # no-op; don't pad the history with duplicate events
 
@@ -1582,12 +1591,21 @@ async def get_application_events(app_id: str) -> list[dict]:
         await db.close()
 
 
+# An application that ever reached one of these stages is never auto-ghosted,
+# even if it was later moved back to 'awaiting' — only the user retires it.
+_NEVER_REACHED_ENGAGED = """NOT EXISTS (
+    SELECT 1 FROM application_events e
+    WHERE e.application_id = {alias}id
+      AND e.to_outcome IN ('screening', 'interview', 'offer'))"""
+
+
 async def mark_ghosted_applications(after_days: int) -> list[str]:
-    """Flip long-silent applications from 'awaiting' to 'no_response'.
+    """Flip long-silent applications from 'awaiting' to 'no_response' (Ghosted).
 
     Without this, every submitted application sits in the default 'awaiting'
     forever unless the user hand-edits it — which made the funnel's response rate
-    report 0% for anyone who skipped the data entry. Returns the ids transitioned.
+    report 0% for anyone who skipped the data entry. Applications that ever
+    reached screening or beyond are skipped. Returns the ids transitioned.
     """
     if after_days <= 0:
         return []
@@ -1599,20 +1617,24 @@ async def mark_ghosted_applications(after_days: int) -> list[str]:
                WHERE status = 'applied'
                  AND COALESCE(outcome, 'awaiting') = 'awaiting'
                  AND applied_at IS NOT NULL
-                 AND applied_at < ?""",
+                 AND applied_at < ?
+                 AND """ + _NEVER_REACHED_ENGAGED.format(alias="applications."),
             (cutoff,),
         )
-        stale = [r["id"] for r in await cursor.fetchall()]
+        candidates = [r["id"] for r in await cursor.fetchall()]
     finally:
         await db.close()
 
-    for app_id in stale:
-        await update_application_outcome(
+    stale = []
+    for app_id in candidates:
+        if await update_application_outcome(
             app_id,
             "no_response",
             note=f"No employer response within {after_days} days",
             source="rule",
-        )
+            only_from="awaiting",
+        ):
+            stale.append(app_id)
     return stale
 
 
@@ -1695,7 +1717,8 @@ async def get_due_applications(ghost_after_days: int = 21) -> dict:
     already rejected you doesn't need a follow-up nudge):
       follow_up  — a follow-up date that has passed
       interview  — an interview date in the future (soonest first)
-      silent     — no response and the ghost threshold is approaching
+      silent     — no response and the ghost threshold is approaching (never
+                   includes applications that already reached screening+)
     """
     now = datetime.now(timezone.utc)
     soon = (now - timedelta(days=max(ghost_after_days - 3, 1))).isoformat()
@@ -1729,7 +1752,8 @@ async def get_due_applications(ghost_after_days: int = 21) -> dict:
             "silent": await _q(
                 """COALESCE(a.outcome, 'awaiting') = 'awaiting'
                    AND a.applied_at IS NOT NULL AND a.applied_at <= ?
-                   AND a.follow_up_at IS NULL""",
+                   AND a.follow_up_at IS NULL
+                   AND """ + _NEVER_REACHED_ENGAGED.format(alias="a."),
                 (soon,),
                 "a.applied_at",
             ),
@@ -1813,10 +1837,10 @@ async def get_pending_reviews(limit: int = 20) -> list[dict]:
 
 
 POST_APPLY_STAGES = {
-    "applied": ("awaiting", "no_response"),
+    "applied": ("awaiting",),
     "interviewing": ("screening", "interview"),
     "offer": ("offer",),
-    "closed": ("rejected", "withdrawn"),
+    "closed": ("rejected", "withdrawn", "no_response"),
 }
 
 

@@ -18,6 +18,7 @@ const apps = ['awaiting', 'no_response', 'screening', 'interview', 'offer', 'rej
     id: `a-${outcome}`, job_id: `j-${outcome}`, title: outcome, company: 'Acme',
     outcome, status: 'applied', resume_content: 'Saved resume',
 }));
+apps.push({ ...apps[0], id: 'a-awaiting-2', job_id: 'j-awaiting-2', title: 'awaiting 2' });
 const writes = [];
 w.api = async (url, options) => {
     if (options && options.method === 'PATCH') {
@@ -56,8 +57,12 @@ w.api = async (url, options) => {
     assert.equal(doc.querySelectorAll('#kcards-applied .kcard').length, 2);
     assert.equal(doc.querySelectorAll('#kcards-interviewing .kcard').length, 2);
     assert.equal(doc.querySelectorAll('#kcards-offer .kcard').length, 1);
-    assert.equal(doc.querySelectorAll('#kcards-closed .kcard').length, 2);
-    assert.equal(doc.getElementById('kgroup-history').textContent, '2');
+    // Ghosted (no_response) lives with rejected/withdrawn in the bottom history.
+    assert.equal(doc.querySelectorAll('#kcards-closed .kcard').length, 3);
+    assert(doc.querySelector('#kcards-closed [data-id="a-no_response"]'), 'ghosted card is in history');
+    assert(!doc.querySelector('#kcards-applied [data-id="a-no_response"]'));
+    assert.equal(doc.getElementById('kgroup-history').textContent, '3');
+    assert.equal(w.stageLabel('closed'), 'Rejected / Turned Down / Ghosted');
     const history = doc.querySelector('details[data-group="history"]');
     history.open = true;
     await w.renderBoard();
@@ -65,7 +70,7 @@ w.api = async (url, options) => {
     assert.equal(history.open, true, 'refresh preserves expanded history');
 
     // Exercise the delegated drag path against the closed-history column.
-    for (const [from, id] of [['applied', 'a-no_response'], ['interviewing', 'a-screening'], ['offer', 'a-offer']]) {
+    for (const [from, id] of [['applied', 'a-awaiting-2'], ['interviewing', 'a-screening'], ['offer', 'a-offer']]) {
         const card = doc.querySelector(`#kcards-${from} [data-id="${id}"]`);
         history.open = false;
         const target = history.querySelector('summary');
@@ -90,7 +95,13 @@ w.api = async (url, options) => {
     w.boardCardMenu({ currentTarget: doc.querySelector('#kcards-applied .kmenu-btn') }, 'applied', 'a-awaiting', 'j-awaiting');
     assert.equal([...doc.querySelectorAll('#kmenu button')].filter(button => button.textContent === 'Mark rejected').length, 1,
         'the card menu exposes one rejection action using the drag transition');
-    w._closeCardMenu();
+    doc.querySelector('#kmenu button[onclick*="no_response"]').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(writes.at(-1), { url: '/api/applications/a-awaiting/outcome', changes: { outcome: 'no_response' } },
+        'Mark ghosted sets the outcome manually');
+    await w.renderBoard();
+    assert(doc.querySelector('#kcards-closed [data-id="a-awaiting"]'), 'manually ghosted card moves to history');
+    await w._runCardOutcome('a-awaiting', 'awaiting');
     writes.length = 0;
 
     assert.equal(await w.runDeckDrop('applied', 'interviewing', 'a-awaiting'), true);
@@ -104,7 +115,7 @@ w.api = async (url, options) => {
     assert(writes.every(write => !('status' in write.changes)), 'hiring moves never overwrite submission status');
     await w._runCardOutcome('a-awaiting', 'rejected');
     assert(doc.querySelector('#kcards-closed [data-id="a-awaiting"]'));
-    assert.equal(doc.getElementById('kgroup-history').textContent, '6');
+    assert.equal(doc.getElementById('kgroup-history').textContent, '7');
     w.setBoardFilter('needs-attention', 'failed');
     assert.equal(doc.querySelector('details[data-group="issues"]').open, true);
 

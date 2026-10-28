@@ -42,7 +42,7 @@ const PIPELINE_STAGES = [
     {
         key: 'applied', label: 'Applied',
         desc: 'Submitted applications waiting for an employer response.',
-        outcomes: ['awaiting', 'no_response'], group: 'primary',
+        outcomes: ['awaiting'], group: 'primary',
         funnel: true, board: true, col: 'applied', tab: 'submitted',
         dot: 'var(--steel)', seg: 'fseg-steel',
     },
@@ -79,9 +79,9 @@ const PIPELINE_STAGES = [
         dot: 'var(--accent-red)', seg: 'fseg-red',
     },
     {
-        key: 'closed', label: 'Rejected / Turned Down', group: 'history',
-        desc: 'Applications rejected by the employer or turned down or withdrawn by you.',
-        outcomes: ['rejected', 'withdrawn'],
+        key: 'closed', label: 'Rejected / Turned Down / Ghosted', group: 'history',
+        desc: 'Applications rejected by the employer, turned down or withdrawn by you, or ghosted (no response).',
+        outcomes: ['rejected', 'withdrawn', 'no_response'],
         funnel: false, board: true, col: 'closed', tab: 'closed',
         dot: 'var(--text-muted)', seg: 'fseg-steel',
     },

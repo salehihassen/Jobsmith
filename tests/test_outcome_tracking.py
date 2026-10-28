@@ -228,6 +228,42 @@ async def test_ghost_sweep_retires_silent_applications(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ghost_sweep_never_touches_interviewing_or_beyond(tmp_path, monkeypatch):
+    await _setup_temp_db(tmp_path, monkeypatch)
+    ids = {}
+    for i, outcome in enumerate(("screening", "interview", "offer")):
+        ids[outcome] = await _make_applied_app(dbmod, "test", str(i), 80, "honest")
+        await _backdate_applied_at(ids[outcome], days_ago=30)
+        await dbmod.update_application_outcome(ids[outcome], outcome)
+    # Interviewed, then dragged back to Applied: its history still protects it.
+    moved_back = await _make_applied_app(dbmod, "test", "back", 80, "honest")
+    await _backdate_applied_at(moved_back, days_ago=30)
+    await dbmod.update_application_outcome(moved_back, "interview")
+    await dbmod.update_application_outcome(moved_back, "awaiting")
+
+    assert await dbmod.mark_ghosted_applications(21) == []
+    apps = {a["id"]: a for a in await dbmod.get_submitted_applications()}
+    for outcome, app_id in ids.items():
+        assert apps[app_id]["outcome"] == outcome
+    assert apps[moved_back]["outcome"] == "awaiting"
+    # ...and it isn't nagged as "about to be ghosted" either.
+    due = await dbmod.get_due_applications(ghost_after_days=21)
+    assert moved_back not in [a["id"] for a in due["silent"]]
+
+
+@pytest.mark.asyncio
+async def test_rule_write_does_not_clobber_a_concurrent_user_move(tmp_path, monkeypatch):
+    await _setup_temp_db(tmp_path, monkeypatch)
+    app_id = await _make_applied_app(dbmod, "test", "1", 80, "honest")
+    await dbmod.update_application_outcome(app_id, "interview")
+    assert await dbmod.update_application_outcome(
+        app_id, "no_response", source="rule", only_from="awaiting"
+    ) is False
+    (app,) = await dbmod.get_submitted_applications()
+    assert app["outcome"] == "interview"
+
+
+@pytest.mark.asyncio
 async def test_stage_durations(tmp_path, monkeypatch):
     await _setup_temp_db(tmp_path, monkeypatch)
     a1 = await _make_applied_app(dbmod, "test", "1", 80, "honest")

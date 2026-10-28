@@ -612,7 +612,7 @@ function renderFailedApplications(apps) {
 
 const OUTCOME_OPTIONS = [
     ['awaiting', 'Awaiting Response'],
-    ['no_response', 'No Response'],
+    ['no_response', 'Ghosted'],
     ['screening', 'Screening'],
     ['interview', 'Interview'],
     ['offer', 'Offer'],
