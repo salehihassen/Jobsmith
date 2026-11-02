@@ -19,6 +19,7 @@ import re
 from urllib.parse import urlparse
 
 from . import resume_parser
+from .chromium_sandbox import chromium_sandbox_kwargs
 from .auto_apply.linkedin_auth import LINKEDIN_SESSION_DIR, has_linkedin_session
 
 logger = logging.getLogger(__name__)
@@ -197,7 +198,8 @@ async def fetch_profile_text() -> tuple[str, str]:
         pw = await async_playwright().start()
         browser = await pw.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled"],
+            **chromium_sandbox_kwargs(),
         )
         ctx = await browser.new_context(storage_state=str(state_path))
         page = await ctx.new_page()

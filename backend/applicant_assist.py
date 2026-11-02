@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from .chromium_sandbox import chromium_sandbox_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -361,6 +362,7 @@ async def launch_assist_isolated(
         browser: Browser = await pw.chromium.launch(
             headless=False,
             args=["--allow-running-insecure-content"],
+            **chromium_sandbox_kwargs(),
         )
         context: BrowserContext = await browser.new_context(
             no_viewport=True,

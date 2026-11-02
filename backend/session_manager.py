@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 from .paths import project_root
+from .chromium_sandbox import chromium_sandbox_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ async def create_session_interactive(domain: str, timeout_seconds: int = 180) ->
 
     try:
         pw = await async_playwright().start()
-        browser = await pw.chromium.launch(headless=False)
+        browser = await pw.chromium.launch(headless=False, **chromium_sandbox_kwargs())
         context = await browser.new_context(
             viewport={"width": 1280, "height": 900},
             user_agent=(

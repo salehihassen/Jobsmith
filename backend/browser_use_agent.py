@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import prompt_registry
+from .chromium_sandbox import chromium_sandbox_kwargs, ensure_browser_use_sandbox_allowed
 from . import session_manager
 from .paths import project_root
 
@@ -230,6 +231,10 @@ def _get_browser_session(
 
     browser_profile = BrowserProfile(
         headless=headless,
+        # Outside Docker this keeps the sandbox on. Inside Docker browser-use
+        # forces --no-sandbox anyway; run_browser_use_apply() blocks that unless
+        # the operator opted out (see backend/chromium_sandbox.py).
+        **chromium_sandbox_kwargs(),
         storage_state=storage_state,  # storage_state only — no user_data_dir (they conflict, cookies silently ignored)
         viewport={"width": 1280, "height": 900},
         user_agent=(
@@ -761,6 +766,7 @@ async def run_browser_use_apply(
     # traceback) so the queue records "manual" and the user sees how to fix it.
     try:
         _ensure_browser_use()
+        ensure_browser_use_sandbox_allowed()
     except RuntimeError as exc:
         logger.error("Browser-Use apply unavailable: %s", exc)
         return {

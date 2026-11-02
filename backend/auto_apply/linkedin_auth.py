@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from ..paths import project_root
+from ..chromium_sandbox import chromium_sandbox_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,8 @@ async def linkedin_login():
             str(LINKEDIN_SESSION_DIR),
             headless=False,
             accept_downloads=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled"],
+            **chromium_sandbox_kwargs(),
         )
         page = context.pages[0] if context.pages else await context.new_page()
 
@@ -158,7 +160,8 @@ async def check_linkedin_session_validity() -> bool:
         pw = await async_playwright().start()
         browser = await pw.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled"],
+            **chromium_sandbox_kwargs(),
         )
         ctx = await browser.new_context(storage_state=str(state_path))
         page = await ctx.new_page()

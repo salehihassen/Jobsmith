@@ -52,6 +52,19 @@ pytest.importorskip(
     reason="browser-use is optional: pip install -r requirements-optional.txt",
 )
 
+
+@pytest.fixture(autouse=True)
+def _neutral_sandbox_guard(monkeypatch):
+    """Keep these tests independent of whether pytest itself runs in Docker.
+
+    run_browser_use_apply() refuses to start in a container unless
+    JOBSMITH_CHROMIUM_NO_SANDBOX is set (see backend/chromium_sandbox.py);
+    that policy is tested in TestSandboxGuard and tests/test_chromium_sandbox.py.
+    """
+    monkeypatch.setattr(
+        "backend.browser_use_agent.ensure_browser_use_sandbox_allowed", lambda: None
+    )
+
 # ---------------------------------------------------------------------------
 # Check LM Studio reachability once at import time (for integration skip).
 # This avoids per-test network calls.
@@ -1307,3 +1320,29 @@ class TestIntegration:
             f"Task prompt is approximately {approx_tokens} tokens — "
             f"exceeds 1500-token budget. Trim candidate fields or summary."
         )
+
+
+class TestSandboxGuard:
+    """browser-use forces --no-sandbox in Docker, so it needs the explicit opt-out."""
+
+    @pytest.mark.asyncio
+    async def test_blocked_in_docker_returns_manual_without_launching(self, monkeypatch):
+        from backend import chromium_sandbox as cs
+        bua = _import_bua()
+        monkeypatch.setattr(
+            "backend.browser_use_agent.ensure_browser_use_sandbox_allowed",
+            cs.ensure_browser_use_sandbox_allowed,
+        )
+        monkeypatch.setenv("JOBSMITH_IN_DOCKER", "1")
+        monkeypatch.delenv(cs.NO_SANDBOX_ENV, raising=False)
+        with patch("backend.browser_use_agent._get_browser_session") as get_session:
+            result = await bua.run_browser_use_apply(
+                job=_SAMPLE_JOB,
+                application=_SAMPLE_APPLICATION,
+                profile=_SAMPLE_PROFILE,
+                config=_SAMPLE_CONFIG,
+            )
+        get_session.assert_not_called()
+        assert result["success"] is False
+        assert result["db_status"] == "manual"
+        assert cs.NO_SANDBOX_ENV in result["message"]

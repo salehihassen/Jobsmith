@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from playwright.async_api import Browser, BrowserContext, Page, Playwright
 
 from .models import FieldDescriptor
+from ..chromium_sandbox import chromium_sandbox_kwargs, explain_launch_failure
 
 logger = logging.getLogger(__name__)
 
@@ -201,8 +202,9 @@ class BrowserController:
         # /authwall redirects).  All other adapters also use Chromium for
         # consistency and UA fingerprint correctness.
         browser_type = self._pw.chromium
+        # No "--no-sandbox": the sandbox policy (on by default, explicit
+        # opt-out only) comes from chromium_sandbox_kwargs().
         _chromium_args = [
-            "--no-sandbox",
             "--disable-blink-features=AutomationControlled",
             "--disable-features=site-per-process",
         ]
@@ -216,14 +218,19 @@ class BrowserController:
             # launch_persistent_context returns a BrowserContext directly —
             # no separate Browser object.  Leave self._browser as None so
             # close() skips the browser.close() call.
-            self._ctx = await browser_type.launch_persistent_context(
-                str(self._profile_dir),
-                headless=self._headless,
-                accept_downloads=True,
-                args=_chromium_args,
-                user_agent=self._user_agent,
-                viewport={"width": self._viewport_width, "height": self._viewport_height},
-            )
+            try:
+                self._ctx = await browser_type.launch_persistent_context(
+                    str(self._profile_dir),
+                    headless=self._headless,
+                    accept_downloads=True,
+                    args=_chromium_args,
+                    **chromium_sandbox_kwargs(),
+                    user_agent=self._user_agent,
+                    viewport={"width": self._viewport_width, "height": self._viewport_height},
+                )
+            except Exception as exc:
+                explain_launch_failure(exc)
+                raise
             self._browser = None
             logger.info(
                 "BrowserController: using persistent Chromium profile at %s (UA: ...%s)",
@@ -252,10 +259,15 @@ class BrowserController:
             # Non-session path (Greenhouse, Lever, generic, etc.)
             # Pass storage_state when provided (e.g. Indeed saved session) so
             # the very first navigation is authenticated.
-            self._browser = await browser_type.launch(
-                headless=self._headless,
-                args=_chromium_args,
-            )
+            try:
+                self._browser = await browser_type.launch(
+                    headless=self._headless,
+                    args=_chromium_args,
+                    **chromium_sandbox_kwargs(),
+                )
+            except Exception as exc:
+                explain_launch_failure(exc)
+                raise
             _storage_state: Optional[str] = None
             if (
                 self._storage_state_path is not None

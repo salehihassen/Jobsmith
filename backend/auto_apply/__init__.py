@@ -47,6 +47,7 @@ from . import orchestrator  # noqa: F401 — re-exported for tests/routers to mo
 # LinkedIn session helpers
 # ---------------------------------------------------------------------------
 from ..paths import project_root as _project_root
+from ..chromium_sandbox import chromium_sandbox_kwargs
 from .linkedin_auth import (      # noqa: F401
     linkedin_login,
     linkedin_logout,
@@ -130,7 +131,8 @@ async def indeed_login() -> dict:
             str(INDEED_CHROME_PROFILE_DIR),
             headless=False,
             accept_downloads=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled"],
+            **chromium_sandbox_kwargs(),
         )
         page = context.pages[0] if context.pages else await context.new_page()
 

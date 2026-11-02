@@ -32,6 +32,7 @@ from urllib.parse import urlencode, quote_plus
 import httpx
 
 from ..http_client import async_client, send
+from ..chromium_sandbox import chromium_sandbox_kwargs
 
 try:
     from playwright_stealth import stealth_async as _stealth_async
@@ -628,7 +629,6 @@ async def fetch_jobs(config: dict, known_ids: set[str] | None = None) -> list[di
     try:
         pw = await async_playwright().start()
         chromium_args = [
-            "--no-sandbox",
             "--disable-blink-features=AutomationControlled",
             "--disable-features=site-per-process",
         ]
@@ -658,6 +658,7 @@ async def fetch_jobs(config: dict, known_ids: set[str] | None = None) -> list[di
                 str(_INDEED_PROFILE_DIR),
                 headless=True,
                 args=chromium_args,
+                **chromium_sandbox_kwargs(),
                 user_agent=ua,
                 viewport={"width": 1280, "height": 800},
                 locale="en-US",
@@ -669,9 +670,12 @@ async def fetch_jobs(config: dict, known_ids: set[str] | None = None) -> list[di
             try:
                 browser = await pw.chromium.launch(
                     headless=True, channel="chrome", args=chromium_args,
+                    **chromium_sandbox_kwargs(),
                 )
             except Exception:
-                browser = await pw.chromium.launch(headless=True, args=chromium_args)
+                browser = await pw.chromium.launch(
+                    headless=True, args=chromium_args, **chromium_sandbox_kwargs(),
+                )
             ctx_kwargs: dict = {
                 "user_agent": ua,
                 "viewport": {"width": 1280, "height": 800},
