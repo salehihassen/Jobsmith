@@ -37,8 +37,18 @@ def _fullstack(location):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("partial", [False, True])
 @pytest.mark.parametrize("job", [FOREIGN, _fullstack("Sucre, Chuquisaca, Bolivia"),
-                                 _fullstack("Cuenca, Azuay, Ecuador")],
-                         ids=["restricted-wwr", "fullstack-bolivia", "fullstack-ecuador"])
+                                 _fullstack("Cuenca, Azuay, Ecuador"),
+                                 {**_fullstack("Cúcuta, Norte de Santander, Colombia"),
+                                  "title": "Forward Deployed Engineer (Python + AI) - Remote - Colombia"},
+                                 {**_fullstack("Villavicencio, Meta, Colombia"),
+                                  "title": "Forward Deployed Engineer (Python + AI) - Remote - Colombia"},
+                                 {"source": "weworkremotely", "company": "OfferUp",
+                                  "title": "Software Development Engineer II (Remote @ Colombia)",
+                                  "location": "Remote", "is_remote": True,
+                                  "description": "Join our remote engineering team.",
+                                  "url": "https://example.com/offerup-colombia"}],
+                         ids=["restricted-wwr", "fullstack-bolivia", "fullstack-ecuador",
+                              "fullstack-cucuta", "fullstack-villavicencio", "offerup-colombia"])
 async def test_ineligible_remote_never_reaches_database(monkeypatch, tmp_path, partial, job):
     async def fetch(*args, **kwargs):
         if partial:
@@ -47,7 +57,9 @@ async def test_ineligible_remote_never_reaches_database(monkeypatch, tmp_path, p
         return [dict(job)]
 
     async def classify(postings, country, config):
-        return {p["id"]: {"decision": "ineligible", "evidence": "Latin America"} for p in postings}
+        return {p["id"]: {"decision": "ineligible",
+                          "evidence": "Colombia" if "Colombia" in p["title"] else "Latin America"}
+                for p in postings}
 
     monkeypatch.setattr(state, "load_config", lambda: CONFIG)
     monkeypatch.setattr(state, "push_notification", lambda *a: None)

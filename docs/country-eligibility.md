@@ -81,3 +81,24 @@ utility API and rejected both, quoting `Remote - Latin America`. Generic company
 background about North American customers and talent across the Americas did
 not override the role-specific restriction. Both locations are covered by the
 save-boundary regression, including timeout recovery.
+
+The Colombia follow-up found that production was still running `545b4d2`,
+without this gate or a configured `search.hiring_country`. Its Inbox API still
+returned two Colombia postings. Changing a fetch filter does not retroactively
+remove stored jobs, so fixing the live Inbox also requires an explicit cleanup
+of already-stored, confirmed-ineligible postings.
+
+The live utility API rejected both FullStack **Forward Deployed Engineer
+(Python + AI) - Remote - Colombia** listings (Cúcuta and Villavicencio), plus
+OfferUp's **Software Development Engineer II (Remote @ Colombia)**. The latter
+has only `Remote` in its location field; the title supplies the missing country.
+All three are included in the save-boundary regression, for both normal fetches
+and timeout recovery. Generic company background about North America must not
+override a role-specific hiring area.
+
+Deploy the branch based on the current production commit, enable
+`search.hiring_country: United States`, and verify the published image revision.
+Preserve a consistent SQLite export and config/image pin before any deployment
+or cleanup. An approved cleanup should move only confirmed-ineligible active
+inbox jobs to `passed`, retaining records and evidence so it is reversible;
+do not delete jobs or change applications already in progress.
